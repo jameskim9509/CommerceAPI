@@ -32,4 +32,13 @@ public class Customer extends BaseEntity{
     private LocalDateTime verifyExpiredAt;
     private String verificationCode;
     private boolean verify = false;
+
+    public void changeVerificationInfo(
+            LocalDateTime verifyExpiredAt, String verificationCode, boolean verify
+    )
+    {
+        this.verifyExpiredAt = verifyExpiredAt;
+        this.verificationCode = verificationCode;
+        this.verify = verify;
+    }
 }

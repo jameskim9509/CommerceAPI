@@ -38,6 +38,6 @@ public class SignupDto {
     @Getter
     @Builder
     public static class Output {
-        private String name;
+        private String message;
     }
 }
