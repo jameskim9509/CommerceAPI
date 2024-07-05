@@ -37,4 +37,4 @@ out/
 .vscode/
 
 ### api Key ###
-./API_Key.txt
+API_Key.txt

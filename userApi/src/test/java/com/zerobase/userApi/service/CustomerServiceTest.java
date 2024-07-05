@@ -35,10 +35,10 @@ class CustomerServiceTest {
                         .phoneNum("01012345678")
                         .build();
 
-        service.signUp(form);
-        CustomerDto customer = service.getCustomer(form.getName());
+        SignupDto.Output output = service.signUp(form);
 
-        assertEquals(form.getName(), customer.getName());
+        assertTrue(service.isCustomerExistByEmail(form.getName()));
+        assertEquals("Verification Email이 발송되었습니다.", output.getMessage());
     }
 
     @DisplayName("sendMail 성공")
