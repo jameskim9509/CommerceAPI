@@ -1,6 +1,7 @@
 package com.zerobase.userApi.dto;
 
-import com.zerobase.userApi.domain.Customer;
+import com.zerobase.userApi.domain.customer.Customer;
+import com.zerobase.userApi.domain.seller.Seller;
 import com.zerobase.userApi.security.Authority;
 import lombok.*;
 
@@ -13,6 +14,7 @@ public class SignupDto {
     @AllArgsConstructor
     @Getter
     @Setter
+    @Builder
     public static class Input {
         private String email;
         private String name;
@@ -31,6 +33,19 @@ public class SignupDto {
                     .roles(List.of(Authority.CUSTOMER.getRole()))
                     .build();
         }
+
+        public Seller toSellerEntity()
+        {
+            return Seller.builder()
+                    .email(this.email)
+                    .name(this.name)
+                    .password(this.password)
+                    .birth(this.birth)
+                    .phoneNum(this.phoneNum)
+                    .roles(List.of(Authority.SELLER.getRole()))
+                    .build();
+        }
+
     }
 
     @NoArgsConstructor

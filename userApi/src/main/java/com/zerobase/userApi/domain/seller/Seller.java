@@ -1,6 +1,6 @@
-package com.zerobase.userApi.domain;
+package com.zerobase.userApi.domain.seller;
 
-import com.zerobase.userApi.security.Authority;
+import com.zerobase.userApi.domain.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,8 +18,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @AuditOverride(forClass = BaseEntity.class)
-public class Customer extends BaseEntity{
-
+public class Seller extends BaseEntity{
     @Id
     @Column(name = "id", nullable = false)
     @GeneratedValue(strategy = GenerationType.IDENTITY)

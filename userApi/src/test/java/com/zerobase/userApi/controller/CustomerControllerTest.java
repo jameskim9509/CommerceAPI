@@ -1,24 +1,16 @@
 package com.zerobase.userApi.controller;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zerobase.userApi.domain.Customer;
-import com.zerobase.userApi.dto.CustomerDto;
+import com.zerobase.userApi.domain.customer.Customer;
 import com.zerobase.userApi.dto.SignupDto;
-import com.zerobase.userApi.repository.CustomerRepository;
-import org.junit.jupiter.api.BeforeEach;
+import com.zerobase.userApi.repository.customer.CustomerRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.*;
-import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDate;
 
