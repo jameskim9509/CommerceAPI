@@ -1,4 +1,4 @@
-package com.zerobase.userApi.service;
+package com.zerobase.userApi.service.customer;
 
 import com.zerobase.userApi.dto.SendMailDto;
 import com.zerobase.userApi.dto.SignupDto;
