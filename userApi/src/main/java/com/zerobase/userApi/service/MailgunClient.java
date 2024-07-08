@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.PostMapping;
         url = "https://api.mailgun.net/v3",
         configuration = MailgunConfig.class
 )
-@Qualifier("mailgun")
+//@Qualifier("mailgun")
 public interface MailgunClient {
 
-    @PostMapping("/{mailgun.domain}/messages")
+    @PostMapping("/${mailgun.domain}/messages")
     ResponseEntity sendEmail(@SpringQueryMap SendMailDto form);
 }

@@ -1,32 +1,33 @@
 package com.zerobase.userApi.service;
 
 import com.zerobase.userApi.domain.Customer;
-import com.zerobase.userApi.dto.CustomerDto;
 import com.zerobase.userApi.dto.SendMailDto;
 import com.zerobase.userApi.dto.SignupDto;
 import com.zerobase.userApi.exception.CustomException;
 import com.zerobase.userApi.exception.ErrorCode;
 import com.zerobase.userApi.repository.CustomerRepository;
-import feign.Response;
+import com.zerobase.userApi.security.CustomerDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class CustomerService {
+public class CustomerService implements UserDetailsService {
 
     private final CustomerRepository customerRepository;
     private final MailgunClient mailgunClient;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional
     public SignupDto.Output signUp(SignupDto.Input form)
@@ -36,6 +37,9 @@ public class CustomerService {
             throw new CustomException(ErrorCode.ALREADY_EXIST_USER);
         }
         else {
+            form.setPassword(
+                    passwordEncoder.encode(form.getPassword())
+            );
             Customer customer = customerRepository.save(form.toCustomerEntity());
 
             LocalDateTime now = LocalDateTime.now();
@@ -43,7 +47,7 @@ public class CustomerService {
 
             sendEmail(
                     SendMailDto.builder()
-                        .from("commerceApiApplication@gmail.com")
+                        .from("commerceAPI@application.com")
                         .to(form.getEmail())
                         .subject("Commerce Validation Email")
                         .text(getVerificationEmailBody(
@@ -78,6 +82,7 @@ public class CustomerService {
         else return response;
     }
 
+    @Transactional
     public SignupDto.Output verfiyEmail(String email, String code)
     {
         Customer customer = customerRepository.findByEmail(email).orElse(null);
@@ -97,6 +102,29 @@ public class CustomerService {
                 .build();
     }
 
+    // Jwt
+    @Override
+    public UserDetails loadUserByUsername(String email)
+    {
+        Customer customer = customerRepository.findByEmail(email)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        return new CustomerDetails(customer);
+    }
+
+    public Customer findValidCustomer(String email, String password)
+    {
+        Customer customer =
+                customerRepository.findByEmail(email)
+                        .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        if(!passwordEncoder.matches(password, customer.getPassword()))
+            throw new CustomException(ErrorCode.USER_NOT_FOUND);
+        if(!customer.isVerify())
+            throw new CustomException(ErrorCode.VERIFICATION_REQUIRED);
+
+        else return customer;
+    }
+
     private String getRandomCode()
     {
         return RandomStringUtils.random(10, true, true);
@@ -113,4 +141,6 @@ public class CustomerService {
                     .append(code)
                     .toString();
     }
+
+
 }

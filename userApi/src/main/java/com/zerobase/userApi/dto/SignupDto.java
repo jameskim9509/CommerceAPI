@@ -1,19 +1,18 @@
 package com.zerobase.userApi.dto;
 
 import com.zerobase.userApi.domain.Customer;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import com.zerobase.userApi.security.Authority;
+import lombok.*;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public class SignupDto {
 
     @NoArgsConstructor
     @AllArgsConstructor
     @Getter
-    @Builder
+    @Setter
     public static class Input {
         private String email;
         private String name;
@@ -29,6 +28,7 @@ public class SignupDto {
                     .password(this.password)
                     .birth(this.birth)
                     .phoneNum(this.phoneNum)
+                    .roles(List.of(Authority.CUSTOMER.getRole()))
                     .build();
         }
     }

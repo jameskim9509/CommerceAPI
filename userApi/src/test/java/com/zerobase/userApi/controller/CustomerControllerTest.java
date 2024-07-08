@@ -1,84 +1,77 @@
 package com.zerobase.userApi.controller;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zerobase.userApi.domain.Customer;
+import com.zerobase.userApi.dto.CustomerDto;
 import com.zerobase.userApi.dto.SignupDto;
 import com.zerobase.userApi.repository.CustomerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.*;
+import org.springframework.test.context.web.WebAppConfiguration;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 class CustomerControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     private CustomerRepository customerRepository;
 
-    private RestTemplate restTemplate;
-
-    @BeforeEach
-    void init()
-    {
-        restTemplate = new RestTemplate();
-    }
-
     @DisplayName("회원가입 및 검증 성공")
     @Test
-    void customerSignUpAndVerify() {
+    void customerSignUpAndVerify() throws Exception {
         //given
         SignupDto.Input form = SignupDto.Input.builder()
                 .name("name")
                 .birth(LocalDate.now())
-                .email("abc@naver.com")
+                .email("bmom22@naver.com")
                 .password("1234")
                 .phoneNum("01012345678")
                 .build();
 
-        String url = "http://localhost:8081/customer/signup";
-        HttpHeaders httpHeaders = new HttpHeaders();
-        httpHeaders.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<SignupDto.Input> signUpRequest = new HttpEntity<>(form, httpHeaders);
+        String url;
+        url = "/customer/signup";
 
-        ResponseEntity<SignupDto.Output> response;
+        //when, then
+        mockMvc.perform(post(url)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(form)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.message")
+                                .value("Verification Email이 발송되었습니다."));
 
-        //when
-        response =
-                restTemplate.exchange(
-                        url,
-                        HttpMethod.POST,
-                        signUpRequest,
-                        SignupDto.Output.class
-                );
-
-        //then
-        assertEquals(HttpStatus.valueOf(200), response.getStatusCode());
-
-        //given
         Customer customer = customerRepository.findByEmail(form.getEmail()).get();
 
-        UriComponentsBuilder uriBuilder =
-                UriComponentsBuilder.fromHttpUrl("<http://localhost:8081/customer/signup/verfiy>")
-                        .queryParam("email", customer.getEmail())
-                        .queryParam("code", customer.getVerificationCode());
-        HttpEntity header = new HttpEntity<>(httpHeaders);
+        url = "/customer/signup/verify?email={1}&code={2}";
 
-        //when
-        response = restTemplate.exchange(
-                        uriBuilder.toUriString(),
-                        HttpMethod.PUT,
-                        header,
-                        SignupDto.Output.class
-                );
-
-        //then
-        assertEquals(HttpStatus.valueOf(200), response.getStatusCode());
+        //when, then
+        mockMvc.perform(put(url, customer.getEmail(), customer.getVerificationCode())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message")
+                        .value("Verification에 성공하였습니다."));
     }
 }
