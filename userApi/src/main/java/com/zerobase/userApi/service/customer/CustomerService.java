@@ -1,12 +1,13 @@
-package com.zerobase.userApi.service;
+package com.zerobase.userApi.service.customer;
 
-import com.zerobase.userApi.domain.Customer;
+import com.zerobase.userApi.domain.customer.Customer;
 import com.zerobase.userApi.dto.SendMailDto;
 import com.zerobase.userApi.dto.SignupDto;
 import com.zerobase.userApi.exception.CustomException;
 import com.zerobase.userApi.exception.ErrorCode;
-import com.zerobase.userApi.repository.CustomerRepository;
-import com.zerobase.userApi.security.CustomerDetails;
+import com.zerobase.userApi.repository.customer.CustomerRepository;
+import com.zerobase.userApi.security.customer.CustomerDetails;
+import com.zerobase.userApi.service.MailgunClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;

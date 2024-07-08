@@ -1,6 +1,6 @@
-package com.zerobase.userApi.security;
+package com.zerobase.userApi.security.customer;
 
-import com.zerobase.userApi.domain.Customer;
+import com.zerobase.userApi.domain.customer.Customer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;

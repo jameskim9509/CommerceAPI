@@ -1,6 +1,6 @@
-package com.zerobase.userApi.dto;
+package com.zerobase.userApi.dto.seller;
 
-import com.zerobase.userApi.domain.Customer;
+import com.zerobase.userApi.domain.seller.Seller;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CustomerDto {
+public class SellerDto {
     private String email;
     private String name;
     private String password;
@@ -24,9 +24,9 @@ public class CustomerDto {
     private String verificationCode;
     private boolean verify;
 
-    public static CustomerDto from(Customer entity)
+    public static SellerDto from(Seller entity)
     {
-        return CustomerDto.builder()
+        return SellerDto.builder()
                 .email(entity.getEmail())
                 .name(entity.getName())
                 .password(entity.getPassword())
