@@ -30,7 +30,7 @@ class CustomerServiceTest {
                 SignupDto.Input.builder()
                         .name("name")
                         .birth(LocalDate.now())
-                        .email("abc@naver.com")
+                        .email("bmom22@naver.com")
                         .password("1234")
                         .phoneNum("01012345678")
                         .build();
@@ -47,7 +47,7 @@ class CustomerServiceTest {
     {
         SendMailDto form =
                 SendMailDto.builder()
-                        .from("user1 <user1@sandboxbaefebde97ff412b880c7cc30355f688.mailgun.org>")
+                        .from("<CommerceAPI@application.com>")
                         .to("bmom22@naver.com")
                         .subject("TestMail")
                         .text("blablabla...")

@@ -1,5 +1,6 @@
 package com.zerobase.userApi.domain;
 
+import com.zerobase.userApi.security.Authority;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,6 +10,7 @@ import org.hibernate.envers.AuditOverride;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Getter
@@ -32,6 +34,8 @@ public class Customer extends BaseEntity{
     private LocalDateTime verifyExpiredAt;
     private String verificationCode;
     private boolean verify = false;
+
+    private List<String> roles;
 
     public void changeVerificationInfo(
             LocalDateTime verifyExpiredAt, String verificationCode, boolean verify
