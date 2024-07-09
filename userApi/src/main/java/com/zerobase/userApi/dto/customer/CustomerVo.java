@@ -1,6 +1,6 @@
-package com.zerobase.userApi.dto.seller;
+package com.zerobase.userApi.dto.customer;
 
-import com.zerobase.userApi.domain.seller.Seller;
+import com.zerobase.userApi.domain.customer.Customer;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -8,12 +8,16 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class SellerDto {
+public class CustomerVo {
+
+    private Long id;
+
     private String email;
     private String name;
     private String password;
@@ -24,9 +28,14 @@ public class SellerDto {
     private String verificationCode;
     private boolean verify;
 
-    public static SellerDto from(Seller entity)
+    private Integer balance;
+
+    private List<String> roles;
+
+    public static CustomerVo from(Customer entity)
     {
-        return SellerDto.builder()
+        return CustomerVo.builder()
+                .id(entity.getId())
                 .email(entity.getEmail())
                 .name(entity.getName())
                 .password(entity.getPassword())
@@ -35,6 +44,8 @@ public class SellerDto {
                 .verifyExpiredAt(entity.getVerifyExpiredAt())
                 .verificationCode(entity.getVerificationCode())
                 .verify(entity.isVerify())
+                .balance(entity.getBalance())
+                .roles(entity.getRoles())
                 .build();
     }
 }

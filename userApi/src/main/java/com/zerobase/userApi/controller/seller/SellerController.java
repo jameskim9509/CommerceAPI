@@ -1,9 +1,8 @@
 package com.zerobase.userApi.controller.seller;
 
-import com.zerobase.userApi.domain.customer.Customer;
-import com.zerobase.userApi.domain.seller.Seller;
 import com.zerobase.userApi.dto.SigninDto;
 import com.zerobase.userApi.dto.SignupDto;
+import com.zerobase.userApi.dto.seller.SellerVo;
 import com.zerobase.userApi.security.JwtTokenProvider;
 import com.zerobase.userApi.service.seller.SellerService;
 import lombok.RequiredArgsConstructor;
@@ -40,15 +39,23 @@ public class SellerController {
             @RequestBody SigninDto.Input form
     )
     {
-        Seller seller = sellerService.findValidSeller(form.getEmail(), form.getPassword());
-        return ResponseEntity.ok(jwtTokenProvider.generateToken(seller.getEmail(), seller.getRoles()));
+        SellerVo sellerVo =
+                sellerService.findValidSeller(form.getEmail(), form.getPassword());
+
+        return ResponseEntity.ok(
+                jwtTokenProvider.generateToken(
+                        sellerVo.getEmail(), sellerVo.getRoles(), sellerVo.getId()
+                )
+        );
     }
 
     @PreAuthorize("hasRole('SELLER')")
     @GetMapping("/test")
     public ResponseEntity<String> testSuccess()
     {
-        String name = SecurityContextHolder.getContext().getAuthentication().getName();
+        String name =
+                SecurityContextHolder.getContext().getAuthentication().getName();
+
         return ResponseEntity.ok( name + "님, test에 성공하였습니다.");
     }
 }

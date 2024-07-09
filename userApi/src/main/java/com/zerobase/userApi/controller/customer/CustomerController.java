@@ -1,9 +1,9 @@
 package com.zerobase.userApi.controller.customer;
 
-import com.zerobase.userApi.domain.customer.Customer;
 import com.zerobase.userApi.dto.ChangeBalanceDto;
 import com.zerobase.userApi.dto.SigninDto;
 import com.zerobase.userApi.dto.SignupDto;
+import com.zerobase.userApi.dto.customer.CustomerVo;
 import com.zerobase.userApi.security.JwtTokenProvider;
 import com.zerobase.userApi.security.customer.CustomerDetails;
 import com.zerobase.userApi.service.customer.CustomerBalanceHistoryService;
@@ -43,8 +43,14 @@ public class CustomerController {
             @RequestBody SigninDto.Input form
     )
     {
-        Customer customer = customerService.findValidCustomer(form.getEmail(), form.getPassword());
-        return ResponseEntity.ok(jwtTokenProvider.generateToken(customer.getEmail(), customer.getRoles()));
+        CustomerVo customerVo =
+                customerService.findValidCustomer(form.getEmail(), form.getPassword());
+
+        return ResponseEntity.ok(
+                jwtTokenProvider.generateToken(
+                        customerVo.getEmail(), customerVo.getRoles(), customerVo.getId()
+                )
+        );
     }
 
     @PreAuthorize("hasRole('CUSTOMER')")
