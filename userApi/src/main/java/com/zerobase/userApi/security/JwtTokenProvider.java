@@ -64,14 +64,14 @@ public class JwtTokenProvider {
         if(roles.contains(Authority.CUSTOMER.getRole())) {
             UserDetails userDetails = customerService.loadUserByUsername(email);
             return new UsernamePasswordAuthenticationToken(
-                    userDetails.getUsername(), "", userDetails.getAuthorities()
+                    userDetails, "", userDetails.getAuthorities()
             );
         }
         else
         {
             UserDetails userDetails = sellerService.loadUserByUsername(email);
             return new UsernamePasswordAuthenticationToken(
-                    userDetails.getUsername(), "", userDetails.getAuthorities()
+                    userDetails, "", userDetails.getAuthorities()
             );
         }
     }

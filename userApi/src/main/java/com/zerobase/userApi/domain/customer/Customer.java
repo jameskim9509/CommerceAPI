@@ -36,6 +36,9 @@ public class Customer extends BaseEntity{
     private String verificationCode;
     private boolean verify = false;
 
+    @Column(columnDefinition = "int default 0")
+    private Integer balance;
+
     private List<String> roles;
 
     public void changeVerificationInfo(
@@ -45,5 +48,10 @@ public class Customer extends BaseEntity{
         this.verifyExpiredAt = verifyExpiredAt;
         this.verificationCode = verificationCode;
         this.verify = verify;
+    }
+
+    public void setBalance(Integer balance)
+    {
+        this.balance = balance;
     }
 }
