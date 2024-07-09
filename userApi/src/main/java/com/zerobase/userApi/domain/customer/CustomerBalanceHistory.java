@@ -6,12 +6,16 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.envers.AuditOverride;
+import org.hibernate.envers.Audited;
 
 @Entity
 @Getter
 @Builder
 @NoArgsConstructor
+@Audited
 @AllArgsConstructor
+@AuditOverride(forClass = BaseEntity.class)
 public class CustomerBalanceHistory extends BaseEntity{
     @Id
     @Column(name = "id", nullable = false)
