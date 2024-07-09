@@ -2,7 +2,6 @@ package com.zerobase.userApi.service.customer;
 
 import com.zerobase.userApi.dto.SendMailDto;
 import com.zerobase.userApi.dto.SignupDto;
-import com.zerobase.userApi.service.customer.CustomerService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,7 +11,8 @@ import org.springframework.http.ResponseEntity;
 
 import java.time.LocalDate;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 class CustomerServiceTest {

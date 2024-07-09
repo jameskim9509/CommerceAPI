@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @Configuration
 @EnableJpaAuditing
-@EnableJpaRepositories(repositoryFactoryBeanClass = EnversRevisionRepositoryFactoryBean.class)
+@EnableJpaRepositories(
+        repositoryFactoryBeanClass = EnversRevisionRepositoryFactoryBean.class,
+        basePackages = "com.zerobase.orderApi"
+)
 public class JpaConfig {
 }
