@@ -37,14 +37,15 @@ public class JwtTokenProvider {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String generateToken(String email, List<String> roles)
+    public String generateToken(String email, List<String> roles, Long id)
     {
         Date now = new Date();
 
         Claims claims = Jwts.claims()
                 .setSubject(email)
                 .setIssuedAt(now)
-                .setExpiration(new Date(now.getTime() + TOKEN_EXPIRE_TIME));
+                .setExpiration(new Date(now.getTime() + TOKEN_EXPIRE_TIME))
+                .setId(id.toString());
 
         claims.put(KEY_ROLES, roles);
 
