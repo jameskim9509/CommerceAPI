@@ -21,15 +21,18 @@ public class CustomerDetails implements UserDetails {
                 .collect(Collectors.toList());
     }
 
+    public Long getId()
+    {
+        return customer.getId();
+    }
+
     @Override
     public String getPassword() {
         return customer.getPassword();
     }
 
     @Override
-    public String getUsername() {
-        return customer.getName();
-    }
+    public String getUsername() { return customer.getName(); }
 
     @Override
     public boolean isAccountNonExpired() {

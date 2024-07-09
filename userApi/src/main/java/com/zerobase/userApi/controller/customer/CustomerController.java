@@ -1,9 +1,12 @@
 package com.zerobase.userApi.controller.customer;
 
 import com.zerobase.userApi.domain.customer.Customer;
+import com.zerobase.userApi.dto.ChangeBalanceDto;
 import com.zerobase.userApi.dto.SigninDto;
 import com.zerobase.userApi.dto.SignupDto;
 import com.zerobase.userApi.security.JwtTokenProvider;
+import com.zerobase.userApi.security.customer.CustomerDetails;
+import com.zerobase.userApi.service.customer.CustomerBalanceHistoryService;
 import com.zerobase.userApi.service.customer.CustomerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class CustomerController {
     private final CustomerService customerService;
+    private final CustomerBalanceHistoryService customerBalanceHistoryService;
     private final JwtTokenProvider jwtTokenProvider;
 
     @PostMapping("/signup")
@@ -49,5 +53,28 @@ public class CustomerController {
     {
         String name = SecurityContextHolder.getContext().getAuthentication().getName();
         return ResponseEntity.ok( name + "님, test에 성공하였습니다.");
+    }
+
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @PostMapping("/balance")
+    public ResponseEntity<ChangeBalanceDto.Output> changeBalance(
+            @RequestBody ChangeBalanceDto.Input form
+    )
+    {
+        CustomerDetails customerDetails =
+                (CustomerDetails)SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(
+                ChangeBalanceDto.Output.builder()
+                                .balance(
+                                        customerBalanceHistoryService
+                                                .changeBalance(customerDetails.getId(), form)
+                                                .getChangeMoney()
+                                )
+                                .build()
+        );
     }
 }
