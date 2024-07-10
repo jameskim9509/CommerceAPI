@@ -2,7 +2,8 @@ package com.zerobase.orderApi.controller;
 
 import com.zerobase.orderApi.dto.AddProductForm;
 import com.zerobase.orderApi.dto.AddProductItemForm;
-import com.zerobase.orderApi.dto.ProductDto;
+import com.zerobase.orderApi.dto.UpdateProductForm;
+import com.zerobase.orderApi.dto.UpdateProductItemForm;
 import com.zerobase.orderApi.security.CustomUserDetails;
 import com.zerobase.orderApi.service.ProductService;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,40 @@ public class SellerProductController {
 
         return ResponseEntity.ok(
                 productService.addProductItem(userDetails.getId(), form)
+        );
+    }
+
+    @PreAuthorize("hasRole('SELLER')")
+    @PutMapping
+    public ResponseEntity<UpdateProductForm.Output> updateProduct(
+            @RequestBody UpdateProductForm.Input form
+    )
+    {
+        CustomUserDetails userDetails =
+                (CustomUserDetails)SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(
+                productService.updateProduct(userDetails.getId(), form)
+        );
+    }
+
+    @PreAuthorize("hasRole('SELLER')")
+    @PutMapping("/item")
+    public ResponseEntity<UpdateProductItemForm.Output> updateProductItem(
+            @RequestBody UpdateProductItemForm.Input form
+    )
+    {
+        CustomUserDetails userDetails =
+                (CustomUserDetails)SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(
+                productService.updateProductItem(userDetails.getId(), form)
         );
     }
 }
