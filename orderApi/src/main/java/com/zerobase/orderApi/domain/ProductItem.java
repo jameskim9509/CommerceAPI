@@ -1,15 +1,13 @@
 package com.zerobase.orderApi.domain;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.hibernate.envers.AuditOverride;
 import org.hibernate.envers.Audited;
 
 @Entity
 @Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -35,6 +33,8 @@ public class ProductItem extends BaseEntity{
             this.product.getProductItemList().remove(this);
 
         this.product = product;
-        this.product.getProductItemList().add(this);
+
+        if(this.product != null)
+            this.product.getProductItemList().add(this);
     }
 }
