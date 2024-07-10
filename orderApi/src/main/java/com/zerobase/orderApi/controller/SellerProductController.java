@@ -86,4 +86,34 @@ public class SellerProductController {
                 productService.updateProductItem(userDetails.getId(), form)
         );
     }
+
+    @PreAuthorize("hasRole('SELLER')")
+    @DeleteMapping
+    public ResponseEntity<String> delteProduct(@RequestParam("id") Long id)
+    {
+        CustomUserDetails userDetails =
+                (CustomUserDetails)SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(
+                productService.deleteProduct(userDetails.getId(), id)
+        );
+    }
+
+    @PreAuthorize("hasRole('SELLER')")
+    @DeleteMapping("/item")
+    public ResponseEntity<String> updateProductItem(@RequestParam("id") Long id)
+    {
+        CustomUserDetails userDetails =
+                (CustomUserDetails)SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(
+                productService.deleteProductItem(userDetails.getId(), id)
+        );
+    }
 }

@@ -84,4 +84,26 @@ public class ProductService {
 
         return UpdateProductForm.Output.fromProductEntity(product);
     }
+
+    public String deleteProductItem(Long sellerId, Long id)
+    {
+        ProductItem productItem =
+                productItemRepository.findBySellerIdAndId(sellerId, id)
+                        .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_ITEM_NOT_FOUND));
+
+        productItemRepository.delete(productItem);
+
+        return "정상적으로 아이템이 제거되었습니다.";
+    }
+
+    public String deleteProduct(Long sellerId, Long id)
+    {
+        Product product =
+                productRepository.findBySellerIdAndId(sellerId, id)
+                        .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        productRepository.delete(product);
+
+        return "정상적으로 상품이 제거되었습니다.";
+    }
 }
