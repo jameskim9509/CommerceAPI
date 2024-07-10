@@ -3,6 +3,7 @@ package com.zerobase.userApi.service.customer;
 import com.zerobase.userApi.domain.customer.Customer;
 import com.zerobase.userApi.dto.SendMailDto;
 import com.zerobase.userApi.dto.SignupDto;
+import com.zerobase.userApi.dto.customer.CustomerVo;
 import com.zerobase.userApi.exception.CustomException;
 import com.zerobase.userApi.exception.ErrorCode;
 import com.zerobase.userApi.repository.customer.CustomerRepository;
@@ -112,7 +113,7 @@ public class CustomerService implements UserDetailsService {
         return new CustomerDetails(customer);
     }
 
-    public Customer findValidCustomer(String email, String password)
+    public CustomerVo findValidCustomer(String email, String password)
     {
         Customer customer =
                 customerRepository.findByEmail(email)
@@ -123,7 +124,7 @@ public class CustomerService implements UserDetailsService {
         if(!customer.isVerify())
             throw new CustomException(ErrorCode.VERIFICATION_REQUIRED);
 
-        else return customer;
+        else return CustomerVo.from(customer);
     }
 
     private String getRandomCode()

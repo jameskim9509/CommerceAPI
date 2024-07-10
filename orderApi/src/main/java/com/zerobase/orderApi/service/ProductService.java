@@ -32,7 +32,6 @@ public class ProductService {
         return AddProductForm.Output.fromProductEntity(savedProduct);
     }
 
-    @Transactional
     public AddProductForm.Output addProductItem(
             Long sellerId, AddProductItemForm.Input form
     )
@@ -44,7 +43,10 @@ public class ProductService {
                 .anyMatch(it -> it.getName().equals(form.getName())))
             throw new CustomException(ErrorCode.PRODUCT_ITEM_EXIST);
 
-        ProductItem productItem = form.toProductItemEntity(sellerId);
+        ProductItem productItem = productItemRepository.save(
+                form.toProductItemEntity(sellerId)
+        );
+
         product.addProductItem(productItem);
 
         return AddProductForm.Output.fromProductEntity(product);

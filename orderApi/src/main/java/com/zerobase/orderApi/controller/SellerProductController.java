@@ -27,7 +27,7 @@ public class SellerProductController {
                 (CustomUserDetails)SecurityContextHolder
                                         .getContext()
                                         .getAuthentication()
-                                        .getDetails();
+                                        .getPrincipal();
 
         return ResponseEntity.ok(
                 productService.addProduct(userDetails.getId(), form)
@@ -45,7 +45,7 @@ public class SellerProductController {
                 (CustomUserDetails)SecurityContextHolder
                         .getContext()
                         .getAuthentication()
-                        .getDetails();
+                        .getPrincipal();
 
         return ResponseEntity.ok(
                 productService.addProductItem(userDetails.getId(), form)
