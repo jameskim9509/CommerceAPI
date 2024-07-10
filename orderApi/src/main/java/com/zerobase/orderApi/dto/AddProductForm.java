@@ -44,6 +44,7 @@ public class AddProductForm {
     @AllArgsConstructor
     @Builder
     public static class Output{
+        private Long productId;
         private Long sellerId;
         private String name;
         private String description;
@@ -52,6 +53,7 @@ public class AddProductForm {
         public static AddProductForm.Output fromProductEntity(Product entity)
         {
             return Output.builder()
+                    .productId(entity.getId())
                     .sellerId(entity.getSellerId())
                     .name(entity.getName())
                     .description(entity.getDescription())

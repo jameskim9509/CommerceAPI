@@ -35,7 +35,7 @@ class CustomerServiceTest {
 
         SignupDto.Output output = service.signUp(form);
 
-        assertTrue(service.isCustomerExistByEmail(form.getName()));
+        assertTrue(service.isCustomerExistByEmail(form.getEmail()));
         assertEquals("Verification Email이 발송되었습니다.", output.getMessage());
     }
 
