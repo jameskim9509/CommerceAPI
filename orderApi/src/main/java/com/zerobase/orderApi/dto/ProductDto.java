@@ -18,7 +18,7 @@ public class ProductDto {
     private Long id;
     private String name;
     private String description;
-    private List<ProductItemDto> productItemDtoList;
+    private List<ProductItemDto> productItemList;
 
     public static ProductDto from(Product product)
     {
@@ -30,7 +30,16 @@ public class ProductDto {
                 .id(product.getId())
                 .name(product.getName())
                 .description(product.getDescription())
-                .productItemDtoList(productItemDtoList)
+                .productItemList(productItemDtoList)
+                .build();
+    }
+
+    public static ProductDto fromWithoutItems(Product product)
+    {
+        return ProductDto.builder()
+                .id(product.getId())
+                .name(product.getName())
+                .description(product.getDescription())
                 .build();
     }
 }
