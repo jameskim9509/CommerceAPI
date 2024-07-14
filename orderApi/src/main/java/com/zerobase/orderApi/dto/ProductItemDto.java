@@ -1,5 +1,6 @@
 package com.zerobase.orderApi.dto;
 
+import com.zerobase.orderApi.domain.Cart;
 import com.zerobase.orderApi.domain.ProductItem;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,6 +24,18 @@ public class ProductItemDto {
                 .name(item.getName())
                 .price(item.getPrice())
                 .count(item.getCount())
+                .build();
+    }
+
+    public static Cart.ProductItem toProductItemRedisEntity(
+            ProductItemDto productItemDto
+    )
+    {
+        return Cart.ProductItem.builder()
+                .id(productItemDto.getId())
+                .name(productItemDto.getName())
+                .price(productItemDto.getPrice())
+                .count(productItemDto.getCount())
                 .build();
     }
 }
