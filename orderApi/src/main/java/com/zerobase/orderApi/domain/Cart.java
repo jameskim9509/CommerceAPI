@@ -44,4 +44,13 @@ public class Cart {
         private Integer count;
         private Integer price;
     }
+
+    public Cart clone()
+    {
+        return Cart.builder()
+                .customerId(this.customerId)
+                .productList(this.productList)
+                .messages(this.messages)
+                .build();
+    }
 }

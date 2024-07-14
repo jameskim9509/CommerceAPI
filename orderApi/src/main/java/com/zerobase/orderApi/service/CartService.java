@@ -7,15 +7,13 @@ import com.zerobase.orderApi.dto.AddProductCartForm;
 import com.zerobase.orderApi.dto.ProductItemDto;
 import com.zerobase.orderApi.exception.CustomException;
 import com.zerobase.orderApi.exception.ErrorCode;
+import com.zerobase.orderApi.repository.ProductItemRepository;
 import com.zerobase.orderApi.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,6 +23,7 @@ public class CartService {
 
     private final RedisClientService redisClientService;
     private final ProductRepository productRepository;
+    private final ProductItemRepository productItemRepository;
 
     public Cart addCart(Long customerId, AddProductCartForm form)
     {
@@ -77,13 +76,13 @@ public class CartService {
                 else
                 {
                     // 가격이 일치하지 않을 때
-                    if(redisItem.getPrice() != item.getPrice())
+                    if(redisItem.getPrice().intValue() != item.getPrice().intValue())
                     {
                         cart.addMessage(
                                 redisItem.getName() + "의 가격이 일치하지 않습니다. 확인 요망"
                         );
-                        redisItem.setCount(redisItem.getCount() + item.getCount());
                     }
+                    redisItem.setCount(redisItem.getCount() + item.getCount());
                 }
             }
         }
@@ -132,5 +131,96 @@ public class CartService {
                     }
             );
         }
+    }
+
+    public Cart getCart(Long customerId)
+    {
+        Cart cart = redisClientService.get(customerId, Cart.class);
+        if(cart != null) refreshCart(cart, customerId);
+        else {
+            cart.setCustomerId(customerId);
+            cart.setProductList(new ArrayList<>());
+            cart.setMessages(new ArrayList<>());
+        }
+
+        return cart;
+    }
+
+    private void refreshCart(Cart cart, Long customerId)
+    {
+        cart.setMessages(new ArrayList<>());
+
+        // 장바구니에 있는 productList를 가져오고, 각각에 해당되는 DB 엔티티와 비교하기
+        Iterator<Cart.Product> cartProductIterator = cart.getProductList().iterator();
+        while(cartProductIterator.hasNext())
+        {
+            Cart.Product cartProduct = cartProductIterator.next();
+            Product product = productRepository.findById(cartProduct.getId())
+                    .orElse(null);
+
+            // 등록된 상품이 제거된 상품일 경우
+            if(product == null)
+            {
+                cart.addMessage("상품" + cartProduct.getId() + "번이 제거되었습니다.");
+                cartProductIterator.remove();
+                continue;
+            }
+
+            // 등록된 product와 장바구니의 product 내용 비교
+            if (!product.getName().equals(cartProduct.getName()))
+            {
+                cart.addMessage("상품명"+ cartProduct.getName() + "이 " + product.getName() + "으로 변경되었습니다.");
+                cartProduct.setName(product.getName());
+            }
+            if (!product.getDescription().equals(cartProduct.getDescription()))
+            {
+                cart.addMessage("상품설명"+ cartProduct.getDescription() + "이 " + product.getDescription() + "으로 변경되었습니다.");
+                cartProduct.setDescription(product.getDescription());
+            }
+
+            Iterator<Cart.ProductItem> cartProductItemIterator = cartProduct.getProductItemList().iterator();
+            while(cartProductItemIterator.hasNext())
+            {
+                Cart.ProductItem cartItem = cartProductItemIterator.next();
+
+                ProductItem item = productItemRepository.findById(cartItem.getId())
+                        .orElse(null);
+
+                // 장바구니 아이템이 제거된 아이템일 경우
+                if(item == null)
+                {
+                    cart.addMessage("상품" + cartProduct.getId() + "내 " + cartItem.getId() + "번 아이템이 제거되었습니다.");
+                    cartProductItemIterator.remove();
+                    continue;
+                }
+
+                // 등록된 productItem와 장바구니의 productItem 내용 비교
+                if(!item.getName().equals(cartItem.getName()))
+                {
+                    cart.addMessage(
+                            cartProduct.getId() + "번의 상품 내 상품 아이템 명 " + cartItem.getName() + "이 " + item.getName() + "으로 변경되었습니다."
+                    );
+                    cartItem.setName(item.getName());
+                }
+                if(item.getCount() < cartItem.getCount())
+                {
+                    cart.addMessage(
+                            cartProduct.getId() + "번의 상품 내 상품 아이템 " + cartItem.getName() + "수량이 최대치" + item.getCount() + "으로 변경되었습니다."
+                    );
+                    cartItem.setCount(item.getCount());
+                }
+                if(!item.getPrice().equals(cartItem.getPrice()))
+                {
+                    cart.addMessage(
+                            cartProduct.getId() + "번의 상품 내 상품 아이템 "+ cartItem.getName() +" 가격이 " + item.getPrice() + "으로 변경되었습니다."
+                    );
+                    cartItem.setPrice(item.getPrice());
+                }
+            }
+        }
+
+        Cart redisCart = cart.clone();
+        redisCart.setMessages(new ArrayList<>());
+        redisClientService.put(customerId, redisCart); // 확인했으므로 저장시에는 메시지 지우기
     }
 }
