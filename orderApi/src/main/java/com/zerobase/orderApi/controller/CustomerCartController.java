@@ -8,10 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -31,5 +28,17 @@ public class CustomerCartController {
                         .getPrincipal();
 
         return ResponseEntity.ok(cartService.addCart(userDetails.getId(), form));
+    }
+
+    @GetMapping
+    public ResponseEntity<Cart> getCart()
+    {
+        CustomUserDetails userDetails =
+                (CustomUserDetails) SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(cartService.getCart(userDetails.getId()));
     }
 }

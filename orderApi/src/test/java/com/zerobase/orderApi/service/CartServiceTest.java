@@ -5,6 +5,7 @@ import com.zerobase.orderApi.domain.Product;
 import com.zerobase.orderApi.domain.ProductItem;
 import com.zerobase.orderApi.dto.AddProductCartForm;
 import com.zerobase.orderApi.dto.ProductItemDto;
+import com.zerobase.orderApi.repository.ProductItemRepository;
 import com.zerobase.orderApi.repository.ProductRepository;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,8 +24,7 @@ import java.util.Optional;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 public class CartServiceTest {
@@ -34,6 +34,9 @@ public class CartServiceTest {
 
     @Mock
     private ProductRepository productRepository;
+
+    @Mock
+    private ProductItemRepository productItemRepository;
 
     @InjectMocks
     private CartService cartService;
@@ -63,8 +66,6 @@ public class CartServiceTest {
                             .build()
                 )
         );
-
-        cartProductList.add(null);
 
         given(redisClientService.get(anyLong(), any()))
                 .willReturn(
@@ -122,7 +123,7 @@ public class CartServiceTest {
                 .willReturn(Optional.of(product));
     }
 
-    @DisplayName("Cart 추가 성공")
+    @DisplayName("장바구니 추가 성공")
     @Test
     void addCart()
     {
@@ -146,6 +147,12 @@ public class CartServiceTest {
                                             .id(2L)
                                             .price(10000)
                                             .count(1)
+                                            .build(),
+                                    ProductItemDto.builder()
+                                            .name("sweeter chocolate")
+                                            .id(3L)
+                                            .price(20000)
+                                            .count(3)
                                             .build()
                                 )
                         )
@@ -167,6 +174,94 @@ public class CartServiceTest {
                 capturedCart.getProductList().get(0)
                     .getProductItemList().stream()
                         .anyMatch(it -> "sweet chocolate".equals(it.getName()) && it.getCount().equals(1))
+        );
+        Assertions.assertTrue(
+                capturedCart.getProductList().get(0)
+                        .getProductItemList().stream()
+                        .anyMatch(it -> "sweeter chocolate".equals(it.getName()) && it.getCount().equals(3))
+        );
+    }
+
+    @DisplayName("장바구니 조회 성공")
+    @Test
+    void getCart()
+    {
+        addCart();
+
+        // given
+        // repository 수정
+        ProductItem item1 = ProductItem.builder()
+                .Id(1L)
+                .sellerId(1L)
+                .name("chocolate")
+                // 5 -> 2
+                .count(2)
+                .price(5000)
+                .build();
+
+        ProductItem item2 = ProductItem.builder()
+                .Id(2L)
+                .sellerId(1L)
+                // "sweet chocolate" -> "sweet choco"
+                .name("sweet choco")
+                .count(5)
+                // 10000 -> 15000
+                .price(15000)
+                .build();
+
+        ProductItem item4 = ProductItem.builder()
+                .Id(4L)
+                .sellerId(1L)
+                .name("sweetest chocolate")
+                .count(5)
+                .price(50000)
+                .build();
+
+        List<ProductItem> productItemList = new ArrayList<>(
+                List.of(item1, item2, item4)// 3 번 아이템 제거
+        );
+
+        Product product = Product.builder()
+                .id(1L)
+                .sellerId(1L)
+                .name("james")
+                .description("snacks")
+                .productItemList(new ArrayList<>())
+                .build();
+
+        productItemList.stream()
+                .forEach(it -> product.addProductItem(it));
+
+        given(productRepository.findById(anyLong()))
+                .willReturn(Optional.of(product));
+
+        given(productItemRepository.findById(1L))
+                .willReturn(Optional.of(item1));
+        given(productItemRepository.findById(2L))
+                .willReturn(Optional.of(item2));
+        given(productItemRepository.findById(3L))
+                .willReturn(Optional.empty());
+
+        // 조회 기능 수행
+        Cart cart = cartService.getCart(1L);
+
+        // cart 메시지 검증
+        Assertions.assertEquals(4, cart.getMessages().size());
+        Assertions.assertTrue(
+                cart.getMessages().stream()
+                        .anyMatch(m -> m.contains("아이템 명"))
+        );
+        Assertions.assertTrue(
+                cart.getMessages().stream()
+                        .anyMatch(m -> m.contains("수량"))
+        );
+        Assertions.assertTrue(
+                cart.getMessages().stream()
+                        .anyMatch(m -> m.contains("가격"))
+        );
+        Assertions.assertTrue(
+                cart.getMessages().stream()
+                        .anyMatch(m -> m.contains("제거"))
         );
     }
 }
