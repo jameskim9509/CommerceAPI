@@ -264,4 +264,77 @@ public class CartServiceTest {
                         .anyMatch(m -> m.contains("제거"))
         );
     }
+
+    @DisplayName("장바구니 수정 성공")
+    @Test
+    void updateCart()
+    {
+        addCart();
+
+        // given
+        ProductItem item1 = ProductItem.builder()
+                .Id(1L)
+                .sellerId(1L)
+                .name("chocolate")
+                .count(5)
+                .price(5000)
+                .build();
+
+        ProductItem item2 = ProductItem.builder()
+                .Id(2L)
+                .sellerId(1L)
+                .name("sweet chocolate")
+                .count(5)
+                .price(10000)
+                .build();
+
+        given(productItemRepository.findById(1L))
+                .willReturn(Optional.of(item1));
+        given(productItemRepository.findById(2L))
+                .willReturn(Optional.of(item2));
+
+        Cart.Product productForm = Cart.Product.builder()
+                .id(1L)
+                .sellerId(1L)
+                .name("james")
+                .description("snacks")
+                .productItemList(
+                        new ArrayList<>(
+                                List.of(
+                                        Cart.ProductItem.builder()
+                                                .name("chocolate")
+                                                .id(1L)
+                                                .price(5000)
+                                                // 2 -> 1
+                                                .count(1)
+                                                .build(),
+                                        Cart.ProductItem.builder()
+                                                .name("sweet chocolate")
+                                                .id(2L)
+                                                .price(10000)
+                                                .count(1)
+                                                .build()
+                                        // 3번 아이템 제거
+                                )
+                        )
+                ).build();
+
+        Cart cartForm = Cart.builder()
+                    .customerId(1L)
+                    .productList(new ArrayList<>(
+                            List.of(productForm)
+                    ))
+                    .messages(new ArrayList<>())
+                    .build();
+
+        Cart cart = cartService.updateCart(1L, cartForm);
+
+        Assertions.assertTrue(cart.getProductList().get(0)
+                .getProductItemList().stream()
+                .anyMatch(it -> it.getName().equals("chocolate") && it.getCount().equals(1)));
+
+        Assertions.assertTrue(cart.getProductList().get(0)
+                .getProductItemList().stream()
+                .noneMatch(it -> it.getName().equals("sweeter chocolate")));
+    }
 }

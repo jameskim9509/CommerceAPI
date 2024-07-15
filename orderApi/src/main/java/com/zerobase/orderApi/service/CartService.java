@@ -29,7 +29,7 @@ public class CartService {
     {
         Cart cart = redisClientService.get(customerId, Cart.class);
 
-        validateForm(cart, form);
+        validateAddForm(cart, form);
 
         if(cart == null)
         {
@@ -92,11 +92,12 @@ public class CartService {
             cart.getProductList().add(product);
         }
 
+        // 상품을 계속 추가할 수 있기 때문에 확인이 필요한 메시지를 지우지 않음
         redisClientService.put(customerId, cart);
         return cart;
     }
 
-    private void validateForm(Cart cart, AddProductCartForm form)
+    private void validateAddForm(Cart cart, AddProductCartForm form)
     {
         Product product = productRepository.findById(form.getId())
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCT_NOT_FOUND));
@@ -136,14 +137,21 @@ public class CartService {
     public Cart getCart(Long customerId)
     {
         Cart cart = redisClientService.get(customerId, Cart.class);
-        if(cart != null) refreshCart(cart, customerId);
-        else {
-            cart.setCustomerId(customerId);
-            cart.setProductList(new ArrayList<>());
-            cart.setMessages(new ArrayList<>());
+        if(cart != null)
+        {
+            refreshCart(cart, customerId);
+            return cart;
         }
+        else {
+            Cart newCart = Cart.builder()
+                .customerId(customerId)
+                .productList(new ArrayList<>())
+                .messages(new ArrayList<>())
+                .build();
 
-        return cart;
+            newCart.addMessage("조회할 장바구니가 비어있습니다.");
+            return newCart;
+        }
     }
 
     private void refreshCart(Cart cart, Long customerId)
@@ -222,5 +230,32 @@ public class CartService {
         Cart redisCart = cart.clone();
         redisCart.setMessages(new ArrayList<>());
         redisClientService.put(customerId, redisCart); // 확인했으므로 저장시에는 메시지 지우기
+    }
+
+    // 수량변경 또는 아이템 삭제
+    public Cart updateCart(Long customerId, Cart cartForm)
+    {
+        Cart prevCart = redisClientService.get(customerId, Cart.class);
+        if(prevCart != null)
+        {
+            Cart newCart = prevCart.clone();
+            // product list만 변경 o
+            newCart.setProductList(cartForm.getProductList());
+            // 변경에 대한 검증 수행
+            refreshCart(newCart, customerId);
+
+            return newCart;
+        }
+        else
+        {
+            Cart newCart = Cart.builder()
+                    .customerId(customerId)
+                    .productList(new ArrayList<>())
+                    .messages(new ArrayList<>())
+                    .build();
+
+            newCart.addMessage("변경할 장바구니가 존재하지 않습니다.");
+            return newCart;
+        }
     }
 }
