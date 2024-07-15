@@ -4,6 +4,7 @@ import com.zerobase.orderApi.domain.Cart;
 import com.zerobase.orderApi.dto.AddProductCartForm;
 import com.zerobase.orderApi.security.CustomUserDetails;
 import com.zerobase.orderApi.service.CartService;
+import com.zerobase.orderApi.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/customer/cart")
 public class CustomerCartController {
     private final CartService cartService;
+    private final OrderService orderService;
 
     @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping
@@ -56,5 +58,28 @@ public class CustomerCartController {
                         .getPrincipal();
 
         return ResponseEntity.ok(cartService.updateCart(userDetails.getId(), cart));
+    }
+
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @PostMapping("/order")
+    public ResponseEntity<String> orderCart(
+            @RequestHeader("Authorization") String bearerToken,
+            @RequestBody Cart cart
+    )
+    {
+        CustomUserDetails userDetails =
+                (CustomUserDetails) SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(
+                orderService.order(
+                        bearerToken,
+                        userDetails.getId(),
+                        userDetails.getUsername(),
+                        cart
+                )
+        );
     }
 }
