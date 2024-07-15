@@ -30,6 +30,7 @@ public class CustomerCartController {
         return ResponseEntity.ok(cartService.addCart(userDetails.getId(), form));
     }
 
+    @PreAuthorize("hasRole('CUSTOMER')")
     @GetMapping
     public ResponseEntity<Cart> getCart()
     {
@@ -40,5 +41,20 @@ public class CustomerCartController {
                         .getPrincipal();
 
         return ResponseEntity.ok(cartService.getCart(userDetails.getId()));
+    }
+
+    @PreAuthorize("hasRole('CUSTOMER')")
+    @PutMapping
+    public ResponseEntity<Cart> updateCart(
+            @RequestBody Cart cart
+    )
+    {
+        CustomUserDetails userDetails =
+                (CustomUserDetails) SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal();
+
+        return ResponseEntity.ok(cartService.updateCart(userDetails.getId(), cart));
     }
 }
