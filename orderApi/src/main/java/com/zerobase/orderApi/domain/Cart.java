@@ -4,6 +4,7 @@ import jakarta.persistence.Id;
 import lombok.*;
 import org.springframework.data.redis.core.RedisHash;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -49,8 +50,8 @@ public class Cart {
     {
         return Cart.builder()
                 .customerId(this.customerId)
-                .productList(this.productList)
-                .messages(this.messages)
+                .productList(new ArrayList<>(this.productList))
+                .messages(new ArrayList<>(this.messages))
                 .build();
     }
 }

@@ -16,6 +16,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ResponseEntity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,9 +43,17 @@ public class CartServiceTest {
     @InjectMocks
     private CartService cartService;
 
+    @Mock
+    private UserClient userClient;
+
+    private OrderService orderService;
+
     @BeforeEach
     void init()
     {
+        orderService =
+                new OrderService(redisClientService, productItemRepository, cartService, userClient);
+
         List<Cart.ProductItem> cartProductItemList = new ArrayList<>(
                 List.of(
                     Cart.ProductItem.builder()
@@ -336,5 +346,107 @@ public class CartServiceTest {
         Assertions.assertTrue(cart.getProductList().get(0)
                 .getProductItemList().stream()
                 .noneMatch(it -> it.getName().equals("sweeter chocolate")));
+    }
+
+    @DisplayName("장바구니 주문 성공")
+    @Test
+    void orderCart()
+    {
+        addCart();
+
+        // given
+        ProductItem item1 = ProductItem.builder()
+                .Id(1L)
+                .sellerId(1L)
+                .name("chocolate")
+                .count(5)
+                .price(5000)
+                .build();
+
+        ProductItem item2 = ProductItem.builder()
+                .Id(2L)
+                .sellerId(1L)
+                .name("sweet chocolate")
+                .count(5)
+                .price(10000)
+                .build();
+
+        ProductItem item3 = ProductItem.builder()
+                .Id(3L)
+                .sellerId(1L)
+                .name("sweeter chocolate")
+                .count(5)
+                .price(20000)
+                .build();
+
+        given(productItemRepository.findById(1L))
+                .willReturn(Optional.of(item1));
+        given(productItemRepository.findById(2L))
+                .willReturn(Optional.of(item2));
+        given(productItemRepository.findById(3L))
+                .willReturn(Optional.of(item3));
+
+        given(userClient.changeBalance(anyString(), any()))
+                .willReturn(new ResponseEntity<>(null, HttpStatusCode.valueOf(200)));
+
+        Cart.Product productForm = Cart.Product.builder()
+                .id(1L)
+                .sellerId(1L)
+                .name("james")
+                .description("snacks")
+                .productItemList(
+                        new ArrayList<>(
+                                List.of(
+                                        Cart.ProductItem.builder()
+                                                .name("chocolate")
+                                                .id(1L)
+                                                .price(5000)
+                                                // 1개(of 3개)만 구매
+                                                .count(1)
+                                                .build(),
+                                        Cart.ProductItem.builder()
+                                                .name("sweet chocolate")
+                                                .id(2L)
+                                                .price(10000)
+                                                .count(1)
+                                                .build()
+                                        // sweeter chocolate 주문 x
+                                )
+                        )
+                ).build();
+
+        Cart orderCart = Cart.builder()
+                .customerId(1L)
+                .productList(new ArrayList<>(List.of(productForm)))
+                .messages(new ArrayList<>())
+                .build();
+
+        ArgumentCaptor<Cart> cartArgumentCaptor = ArgumentCaptor.forClass(Cart.class);
+
+        // when
+        orderService.order(
+                "abcdefg", 1L, "james@naver.com", orderCart
+        );
+
+        verify(redisClientService, times(2)).put(anyLong(), cartArgumentCaptor.capture());
+        Cart capturedCart = cartArgumentCaptor.getAllValues().get(1);
+        Assertions.assertTrue(
+                capturedCart.getProductList().get(0)
+                        .getProductItemList().stream()
+                        .anyMatch(it -> it.getName().equals("chocolate") && it.getCount().equals(2))
+        );
+        Assertions.assertTrue(
+                capturedCart.getProductList().get(0)
+                        .getProductItemList().stream()
+                        .noneMatch(it -> it.getName().equals("sweet chocolate"))
+        );
+        Assertions.assertTrue(
+                capturedCart.getProductList().get(0)
+                        .getProductItemList().stream()
+                        .anyMatch(it -> it.getName().equals("sweeter chocolate") && it.getCount().equals(3))
+        );
+        Assertions.assertEquals(4, productItemRepository.findById(1L).get().getCount());
+        Assertions.assertEquals(4, productItemRepository.findById(2L).get().getCount());
+        Assertions.assertEquals(5, productItemRepository.findById(3L).get().getCount());
     }
 }

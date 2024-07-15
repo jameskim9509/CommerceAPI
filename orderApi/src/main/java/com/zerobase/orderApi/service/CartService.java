@@ -140,6 +140,11 @@ public class CartService {
         if(cart != null)
         {
             refreshCart(cart, customerId);
+
+            Cart redisCart = cart.clone();
+            redisCart.setMessages(new ArrayList<>());
+            redisClientService.put(customerId, redisCart); // 해결했기 때문에 저장시에는 메시지 지우기
+
             return cart;
         }
         else {
@@ -154,10 +159,8 @@ public class CartService {
         }
     }
 
-    private void refreshCart(Cart cart, Long customerId)
+    public void refreshCart(Cart cart, Long customerId)
     {
-        cart.setMessages(new ArrayList<>());
-
         // 장바구니에 있는 productList를 가져오고, 각각에 해당되는 DB 엔티티와 비교하기
         Iterator<Cart.Product> cartProductIterator = cart.getProductList().iterator();
         while(cartProductIterator.hasNext())
@@ -226,10 +229,6 @@ public class CartService {
                 }
             }
         }
-
-        Cart redisCart = cart.clone();
-        redisCart.setMessages(new ArrayList<>());
-        redisClientService.put(customerId, redisCart); // 확인했으므로 저장시에는 메시지 지우기
     }
 
     // 수량변경 또는 아이템 삭제
@@ -243,6 +242,10 @@ public class CartService {
             newCart.setProductList(cartForm.getProductList());
             // 변경에 대한 검증 수행
             refreshCart(newCart, customerId);
+
+            Cart redisCart = newCart.clone();
+            redisCart.setMessages(new ArrayList<>());
+            redisClientService.put(customerId, redisCart); // 해결했기 때문에 저장시에는 메시지 지우기
 
             return newCart;
         }
