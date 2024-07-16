@@ -11,7 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@RedisHash("cart")
+//@RedisHash("cart")
 public class Cart {
     @Id
     private Long customerId;

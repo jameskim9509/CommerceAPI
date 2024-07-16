@@ -9,11 +9,11 @@ import org.springframework.web.bind.annotation.RequestHeader;
 
 @FeignClient(
         name = "user-api",
-        url = "https://api.mailgun.net/v3"
+        url = "http://localhost:8081/customer"
 )
 public interface UserClient {
 
-    @PostMapping("/customer/balance")
+    @PostMapping("/balance")
     ResponseEntity<ChangeBalanceDto.Output> changeBalance(
             @RequestHeader("Authorization") String bearerToken,
             @RequestBody ChangeBalanceDto.Input form

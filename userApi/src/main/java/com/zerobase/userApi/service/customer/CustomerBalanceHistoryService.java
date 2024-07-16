@@ -32,14 +32,14 @@ public class CustomerBalanceHistoryService {
                                                  .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND))
                                  ).build());
 
-         if(customerBalanceHistory.getCurrentMoney() + form.getMoney() < 0)
+         if(customerBalanceHistory.getChangeMoney() + form.getMoney() < 0)
          {
              throw new CustomException(ErrorCode.NOT_ENOUGH_BALANCE);
          }
 
          customerBalanceHistory = CustomerBalanceHistory.builder()
                  .changeMoney(customerBalanceHistory.getChangeMoney() + form.getMoney())
-                 .currentMoney(customerBalanceHistory.getCurrentMoney())
+                 .currentMoney(customerBalanceHistory.getChangeMoney())
                  .description(form.getMessage())
                  .fromMessage(form.getFrom())
                  .customer(customerBalanceHistory.getCustomer())

@@ -6,6 +6,7 @@ import com.zerobase.orderApi.dto.ChangeBalanceDto;
 import com.zerobase.orderApi.exception.CustomException;
 import com.zerobase.orderApi.exception.ErrorCode;
 import com.zerobase.orderApi.repository.ProductItemRepository;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
@@ -24,7 +25,7 @@ public class OrderService {
     private final UserClient userClient;
 
     @Transactional
-    public String order(String bearerToken, Long customerId, String username, Cart orderCart)
+    public Cart order(String bearerToken, Long customerId, String username, Cart orderCart)
     {
         // 장바구니 확인
         Cart curCart =  redisClientService.get(customerId, Cart.class);
@@ -87,18 +88,18 @@ public class OrderService {
                                     .sum();
 
             // 결제 시도
-            HttpStatusCode httpStatusCode =
+            try {
                 userClient.changeBalance(
                         bearerToken, ChangeBalanceDto.Input.builder()
-                                        .from(username)
-                                        .message("상품 주문")
-                                        .money(-totalPrice)
-                                        .build()
-                ).getStatusCode();
-
-            // 결제 시도에 실패할 경우
-            if(httpStatusCode.is4xxClientError())
+                                .from(username)
+                                .message("상품 주문")
+                                .money(-totalPrice)
+                                .build()
+                );
+            } catch (FeignException fe)
+            {
                 throw new CustomException(ErrorCode.PAYMENT_ERROR);
+            }
 
             // 재고 변경
             orderCart.getProductList().stream()
@@ -111,7 +112,7 @@ public class OrderService {
 
             redisClientService.put(customerId, curCart);
 
-            return "주문이 완료되었습니다.";
+            return curCart;
         }
         catch (CustomException e)
         {

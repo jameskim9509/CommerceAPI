@@ -62,7 +62,7 @@ public class CustomerCartController {
 
     @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping("/order")
-    public ResponseEntity<String> orderCart(
+    public ResponseEntity<Cart> orderCart(
             @RequestHeader("Authorization") String bearerToken,
             @RequestBody Cart cart
     )
