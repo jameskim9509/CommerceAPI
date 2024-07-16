@@ -1,0 +1,19 @@
+server:
+  port: 80
+
+pring:
+  cloud:
+    gateway:
+      routes:
+      - id: user-api
+        uri: http://localhost:8081
+        predicates:
+        - Path=/user/**
+        filters:
+        - RewritePath=/user/(?<path>.*), /$\{path}
+      - id: order-api
+        uri: http://localhost:8082
+        predicates:
+        - Path=/order/**
+        filters:
+        - RewritePath=/order/(?<path>.*), /$\{path}
