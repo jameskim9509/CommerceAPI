@@ -50,7 +50,6 @@ jobs:
           with:
             distribution: 'adopt'
             java-version: '17'
-          run: java --version 
         
         - name: Test, Build, tag, and push image to Amazon ECR
           id: build-image
