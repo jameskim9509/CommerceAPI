@@ -76,7 +76,7 @@ jobs:
           with:
             host: ${{ env.EC2_DNS_ADDRESS }}
             username: ec2-user
-            key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+            key: ${{ secrets.USER_EC2_SSH_PRIVATE_KEY }}
             script: |
               sudo su
               aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -96,7 +96,7 @@ jobs:
           with:
             host: ${{ env.EC2_DNS_ADDRESS }}
             username: ec2-user
-            key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+            key: ${{ secrets.ORDER_EC2_SSH_PRIVATE_KEY }}
             script: |
               sudo su
               aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -116,7 +116,7 @@ jobs:
           with:
             host: ${{ env.EC2_DNS_ADDRESS }}
             username: ec2-user
-            key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+            key: ${{ secrets.GW_EC2_SSH_PRIVATE_KEY }}
             script: |
               sudo su
               aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
