@@ -1,9 +1,9 @@
 server:
-  port: 8082
+  port: 8080
 
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3308/order?useSSL=false&useUnicode=true&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://commerce-mysql.c90qy2aumeaj.ap-northeast-2.rds.amazonaws.com:3306/orders
     username: commerce
     password: commerce
 
@@ -17,5 +17,5 @@ spring:
         format_sql: true
 
   redis:
-    host: localhost
+    host: commerceredis-ro.scxzeb.ng.0001.apn2.cache.amazonaws.com
     port: 6379

@@ -62,3 +62,8 @@ clean {
 tasks.withType(JavaCompile) {
     options.generatedSourceOutputDirectory = file(querydslSrcDir)
 }
+
+test{
+    systemProperty "spring.redis.host", System.getProperty("spring.redis.host")
+    systemProperty "spring.redis.port", System.getProperty('spring.redis.port')
+}

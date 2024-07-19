@@ -137,7 +137,7 @@ public class CustomerService implements UserDetailsService {
         StringBuilder sb = new StringBuilder();
         return sb.append("Dear ").append(name).append("\n")
                     .append("verification 링크를 클릭해주세요.\n\n")
-                    .append("http://localhost:8081/customer/signup/verify?email=")
+                    .append("http://ec2-43-201-50-243.ap-northeast-2.compute.amazonaws.com/user/customer/signup/verify?email=")
                     .append(email)
                     .append("&code=")
                     .append(code)
