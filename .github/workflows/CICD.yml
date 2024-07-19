@@ -118,7 +118,7 @@ jobs:
         - name: pull image on gateway EC2
           env: 
               ECR_REPOSITORY: commerce-gateway
-              EC2_DNS_ADDRESS: ec2-43-201-50-243.ap-northeast-2.compute.amazonaws.com
+              EC2_DNS_ADDRESS: ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com
           uses: appleboy/ssh-action@v1
           with:
             host: ${{ env.EC2_DNS_ADDRESS }}
