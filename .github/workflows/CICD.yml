@@ -51,6 +51,7 @@ jobs:
             # ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
   
           run: |
+            chmod +x ./gradlew
             ./gradlew test -Dmailgun.domain=${{secrets.MAILGUN_DOMAIN}} -Dmailgun.apiKey=${{secrets.MAILGUN_APIKEY}} -Dspring.redis.host=redis -Dspring.redis.port=6379
             ./gradlew clean build -x test
 
