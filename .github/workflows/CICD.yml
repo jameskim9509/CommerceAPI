@@ -53,17 +53,17 @@ jobs:
           run: |
             ./gradlew test -Dmailgun.domain=${{secrets.MAILGUN_DOMAIN}} -Dmailgun.apiKey=${{secrets.MAILGUN_APIKEY}} -Dspring.redis.host=redis -Dspring.redis.port=6379
             ./gradlew clean build -x test
-            ./gateway/docker build -t $ECR_REGISTRY/commerce-gateway:latest .
+            docker build -t $ECR_REGISTRY/commerce-gateway:latest ./gateway
             echo "image created. image=$ECR_REGISTRY/commerce-gateway:latest"
             docker push $ECR_REGISTRY/commerce-gateway:latest
             echo "image pushed. image=$ECR_REGISTRY/commerce-gateway:latest"
 
-            ./userApi/docker build -t $ECR_REGISTRY/commerce-userapi:latest .
+            docker build -t $ECR_REGISTRY/commerce-userapi:latest ./userApi
             echo "image created. image=$ECR_REGISTRY/commerce-userapi:latest"
             docker push $ECR_REGISTRY/commerce-userapi:latest
             echo "image pushed. image=$ECR_REGISTRY/commerce-userapi:latest"
 
-            ./orderApi/docker build -t $ECR_REGISTRY/commerce-orderapi:latest .
+            docker build -t $ECR_REGISTRY/commerce-orderapi:latest ./orderApi
             echo "image created. image=$ECR_REGISTRY/commerce-orderapi:latest"
             docker push $ECR_REGISTRY/commerce-orderapi:latest
             echo "image pushed. image=$ECR_REGISTRY/commerce-orderapi:latest"
