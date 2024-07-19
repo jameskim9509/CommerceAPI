@@ -1,0 +1,116 @@
+# main 브랜치에 push or pull request를 수행할 때 이벤트 발생
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      
+# 환경변수 설정
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REGISTRY: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com
+
+jobs:
+  # 빌드 및 배포
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v1
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ env.AWS_REGION }}
+  
+        - name: Login to Amazon ECR
+          id: login-ecr
+          uses: aws-actions/amazon-ecr-login@v1
+  
+        - name: Build, tag, and push image to Amazon ECR
+          id: build-image
+          # env:
+            # ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+  
+          run: |
+            ./gateway/docker build -t $ECR_REGISTRY/commerce-gateway:latest .
+            echo "image created. image=$ECR_REGISTRY/commerce-gateway:latest"
+            docker push $ECR_REGISTRY/commerce-gateway:latest
+            echo "image pushed. image=$ECR_REGISTRY/commerce-gateway:latest"
+
+            ./userApi/docker build -t $ECR_REGISTRY/commerce-userapi:latest .
+            echo "image created. image=$ECR_REGISTRY/commerce-userapi:latest"
+            docker push $ECR_REGISTRY/commerce-userapi:latest
+            echo "image pushed. image=$ECR_REGISTRY/commerce-userapi:latest"
+
+            ./orderApi/docker build -t $ECR_REGISTRY/commerce-orderapi:latest .
+            echo "image created. image=$ECR_REGISTRY/commerce-orderapi:latest"
+            docker push $ECR_REGISTRY/commerce-orderapi:latest
+            echo "image pushed. image=$ECR_REGISTRY/commerce-orderapi:latest"
+  
+        - name: pull image on user API EC2
+          env: 
+            ECR_REPOSITORY: commerce-userapi
+            EC2_DNS_ADDRESS: ec2-3-36-59-121.ap-northeast-2.compute.amazonaws.com
+          uses: appleboy/ssh-action@v1
+          with:
+            host: ${{ env.EC2_DNS_ADDRESS }}
+            username: ec2-user
+            key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+            script: |
+              sudo su
+              aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+              aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              aws configure set region ${{ env.AWS_REGION }}
+              ECR_REGISTRY_LOGIN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
+              docker stop $ECR_REPOSITORY || true
+              docker rm $ECR_REPOSITORY || true
+              docker pull ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              docker run -d --name $ECR_REPOSITORY -p 8080:8080 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+
+        - name: pull image on order API EC2
+          env: 
+            ECR_REPOSITORY: commerce-orderapi
+            EC2_DNS_ADDRESS: ec2-54-180-135-15.ap-northeast-2.compute.amazonaws.com
+          uses: appleboy/ssh-action@v1
+          with:
+            host: ${{ env.EC2_DNS_ADDRESS }}
+            username: ec2-user
+            key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+            script: |
+              sudo su
+              aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+              aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              aws configure set region ${{ env.AWS_REGION }}
+              ECR_REGISTRY_LOGIN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
+              docker stop $ECR_REPOSITORY || true
+              docker rm $ECR_REPOSITORY || true
+              docker pull ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              docker run -d --name $ECR_REPOSITORY -p 8080:8080 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              
+        - name: pull image on gateway EC2
+          env: 
+              ECR_REPOSITORY: commerce-gateway
+              EC2_DNS_ADDRESS: ec2-43-201-50-243.ap-northeast-2.compute.amazonaws.com
+          uses: appleboy/ssh-action@v1
+          with:
+            host: ${{ env.EC2_DNS_ADDRESS }}
+            username: ec2-user
+            key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+            script: |
+              sudo su
+              aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+              aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              aws configure set region ${{ env.AWS_REGION }}
+              ECR_REGISTRY_LOGIN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
+              docker stop $ECR_REPOSITORY || true
+              docker rm $ECR_REPOSITORY || true
+              docker pull ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              docker run -d --name $ECR_REPOSITORY -p 8080:8080 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
