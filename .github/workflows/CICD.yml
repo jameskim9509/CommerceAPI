@@ -53,20 +53,27 @@ jobs:
           run: |
             ./gradlew test -Dmailgun.domain=${{secrets.MAILGUN_DOMAIN}} -Dmailgun.apiKey=${{secrets.MAILGUN_APIKEY}} -Dspring.redis.host=redis -Dspring.redis.port=6379
             ./gradlew clean build -x test
-            docker build -t $ECR_REGISTRY/commerce-gateway:latest ./gateway
+
+            cd ./gateway
+            docker build -t $ECR_REGISTRY/commerce-gateway:latest .
             echo "image created. image=$ECR_REGISTRY/commerce-gateway:latest"
             docker push $ECR_REGISTRY/commerce-gateway:latest
             echo "image pushed. image=$ECR_REGISTRY/commerce-gateway:latest"
+            cd ..
 
-            docker build -t $ECR_REGISTRY/commerce-userapi:latest ./userApi
+            cd ./userApi
+            docker build -t $ECR_REGISTRY/commerce-userapi:latest .
             echo "image created. image=$ECR_REGISTRY/commerce-userapi:latest"
             docker push $ECR_REGISTRY/commerce-userapi:latest
             echo "image pushed. image=$ECR_REGISTRY/commerce-userapi:latest"
+            cd ..
 
-            docker build -t $ECR_REGISTRY/commerce-orderapi:latest ./orderApi
+            cd ./orderApi
+            docker build -t $ECR_REGISTRY/commerce-orderapi:latest .
             echo "image created. image=$ECR_REGISTRY/commerce-orderapi:latest"
             docker push $ECR_REGISTRY/commerce-orderapi:latest
             echo "image pushed. image=$ECR_REGISTRY/commerce-orderapi:latest"
+            cd ..
   
         - name: pull image on user API EC2
           env: 
