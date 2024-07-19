@@ -100,10 +100,10 @@ jobs:
               aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
               aws configure set region ${{ env.AWS_REGION }}
               ECR_REGISTRY_LOGIN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
-              docker stop $ECR_REPOSITORY || true
-              docker rm $ECR_REPOSITORY || true
-              docker pull ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
-              docker run -d --name $ECR_REPOSITORY -e MALIGUN_APIKEY=${{ secrets.MAILGUN_APIKEY }} -e MAILGUN_DOMAIN=${{ secrets.MAILGUN_DOMAIN }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              docker stop ${{ env.ECR_REPOSITORY }} || true
+              docker rm ${{ env.ECR_REPOSITORY }} || true
+              docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              docker run -d --name ${{ env.ECR_REPOSITORY }} -e MALIGUN_APIKEY=${{ secrets.MAILGUN_APIKEY }} -e MAILGUN_DOMAIN=${{ secrets.MAILGUN_DOMAIN }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
         - name: pull image on order API EC2
           env: 
@@ -120,10 +120,10 @@ jobs:
               aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
               aws configure set region ${{ env.AWS_REGION }}
               ECR_REGISTRY_LOGIN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
-              docker stop $ECR_REPOSITORY || true
-              docker rm $ECR_REPOSITORY || true
-              docker pull ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
-              docker run -d --name $ECR_REPOSITORY -p 8080:8080 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              docker stop ${{ env.ECR_REPOSITORY }} || true
+              docker rm ${{ env.ECR_REPOSITORY }} || true
+              docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              docker run -d --name ${{ env.ECR_REPOSITORY }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
               
         - name: pull image on gateway EC2
           env: 
@@ -140,7 +140,7 @@ jobs:
               aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
               aws configure set region ${{ env.AWS_REGION }}
               ECR_REGISTRY_LOGIN=$(aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
-              docker stop $ECR_REPOSITORY || true
-              docker rm $ECR_REPOSITORY || true
-              docker pull ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
-              docker run -d --name $ECR_REPOSITORY -p 80:80 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              docker stop ${{ env.ECR_REPOSITORY }} || true
+              docker rm ${{ env.ECR_REPOSITORY }} || true
+              docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              docker run -d --name ${{ env.ECR_REPOSITORY }} -p 80:80 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
