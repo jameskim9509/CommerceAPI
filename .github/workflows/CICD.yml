@@ -133,4 +133,4 @@ jobs:
               docker stop $ECR_REPOSITORY || true
               docker rm $ECR_REPOSITORY || true
               docker pull ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
-              docker run -d --name $ECR_REPOSITORY -p 8080:8080 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+              docker run -d --name $ECR_REPOSITORY -p 80:80 ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
