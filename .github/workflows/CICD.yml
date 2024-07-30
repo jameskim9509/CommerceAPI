@@ -102,7 +102,7 @@ jobs:
               sudo docker stop ${{ env.ECR_REPOSITORY }} || true
               sudo docker rm ${{ env.ECR_REPOSITORY }} || true
               sudo docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-              sudo docker run -d --name ${{ env.ECR_REPOSITORY }} -e MALIGUN_APIKEY=${{ secrets.MAILGUN_APIKEY }} -e MAILGUN_DOMAIN=${{ secrets.MAILGUN_DOMAIN }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              sudo docker run -d --name ${{ env.ECR_REPOSITORY }} -e MAILGUN_APIKEY=${{ secrets.MAILGUN_APIKEY }} -e MAILGUN_DOMAIN=${{ secrets.MAILGUN_DOMAIN }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
         - name: pull image on order API EC2
           env: 
