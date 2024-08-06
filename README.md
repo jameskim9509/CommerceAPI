@@ -53,14 +53,14 @@
   <img src = "/screen-shot/verification.png" width="500" height="400"> <br> <br>
   * **로그인 시 JWT 토큰 발급** <br> <br>
   <img src = "/screen-shot/login.png" width="500" height="400"> <br> <br>
-  * **상품 등록 예**
+  * **상품 등록 예** <br> <br>
   <img src = "/screen-shot/register_product.png" width="500" height="400"> <br> <br>  
-  * **장바구니 등록 예**
+  * **장바구니 등록 예** <br> <br>
   <img src = "/screen-shot/customer_addCart.png" width="500" height="400"> <br> <br>
-  * **장바구니 결제 예**
+  * **장바구니 결제 예** <br> <br>
   <img src = "/screen-shot/customer_orderCart.png" width="500" height="400"> <br> <br>
-  * **상품 필터링 예**
+  * **상품 필터링 예** <br> <br>
   <img src = "/screen-shot/searchItemByFilter.png" width="500" height="400"> <br> <br>
     
-* ## AWS 배포 현황
+* ## AWS 배포 현황 ( 현재 비용 문제로 운영 중단 )
   <img src = "/screen-shot/aws_deploy.png" width="500" height="400"> <br> <br>
