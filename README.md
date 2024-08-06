@@ -10,7 +10,7 @@
 그외. 상품 필터링 기능 구현 등
 
 * ## 프로젝트 구성도 <br> <br>
-<img src = "/proj_structure.png" width="800" height="400">
+<img src = "/screen-shot/CommerceAPI_Structure.png" width="800" height="400">
 
 - ## 기술 요구사항
 1. **멀티 모듈** 프로젝트를 통해 한 곳에서 다양한 모듈을 관리할 수 있도록 하는 **마이크로서비스 아키텍처** 구현
@@ -46,15 +46,21 @@
   * postman
 
 * ## DB 테이블 <br> <br>
-<img src = "/db_cap.png" width="600" height="200">
+<img src = "/screen-shot/commerce_ERD.png" width="600" height="200">
 
 * ## Postman 사용 예
   * **이메일 검증을 통한 회원가입** <br> <br>
-  <img src = "./postman_cap1(reqForReview).png" width="500" height="400"> <br> <br>
+  <img src = "/screen-shot/verification.png" width="500" height="400"> <br> <br>
   * **로그인 시 JWT 토큰 발급** <br> <br>
-  <img src = "./postman_cap2(getReview).png" width="500" height="400"> <br> <br>
+  <img src = "/screen-shot/login.png" width="500" height="400"> <br> <br>
   * **상품 등록 예**
-  * **장바구니 관리 예**
-  * **장바구니 결제**
+  <img src = "/screen-shot/register_product.png" width="500" height="400"> <br> <br>  
+  * **장바구니 등록 예**
+  <img src = "/screen-shot/customer_addCart.png" width="500" height="400"> <br> <br>
+  * **장바구니 결제 예**
+  <img src = "/screen-shot/customer_orderCart.png" width="500" height="400"> <br> <br>
+  * **상품 필터링 예**
+  <img src = "/screen-shot/searchItemByFilter.png" width="500" height="400"> <br> <br>
     
 * ## AWS 배포 현황
+  <img src = "/screen-shot/aws_deploy.png" width="500" height="400"> <br> <br>
