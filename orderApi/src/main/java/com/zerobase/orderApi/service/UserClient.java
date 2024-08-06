@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 
 @FeignClient(
         name = "user-api",
-        url = "http://ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com/order/customer"
+        url = "http://ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com/user/customer"
 )
 public interface UserClient {
 
