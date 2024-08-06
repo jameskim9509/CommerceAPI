@@ -1,0 +1,143 @@
+# main 브랜치에 push or pull request를 수행할 때 이벤트 발생
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+  # 수동 ci/cd
+  workflow_dispatch:
+      
+# 환경변수 설정
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REGISTRY: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com
+
+jobs:
+  # 빌드 및 배포
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    services:
+      redis:
+        # docker image 다운로드
+        image: redis
+        # Redis가 시작할때까지 wait
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v1
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ env.AWS_REGION }}
+  
+        - name: Login to Amazon ECR
+          id: login-ecr
+          uses: aws-actions/amazon-ecr-login@v1
+
+        - name: Setup Java17
+          uses: actions/setup-java@v4
+          with:
+            distribution: 'adopt'
+            java-version: '17'
+        
+        - name: Test, Build, tag, and push image to Amazon ECR
+          id: build-image
+          # env:
+            # ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+  
+          run: |
+            chmod +x ./gradlew
+            ./gradlew test -Dmailgun.domain=${{secrets.MAILGUN_DOMAIN}} -Dmailgun.apiKey=${{secrets.MAILGUN_APIKEY}} -Dspring.redis.host=redis -Dspring.redis.port=6379
+            ./gradlew clean build -x test
+
+            cd ./gateway
+            docker build -t $ECR_REGISTRY/commerce-gateway:latest .
+            echo "image created. image=$ECR_REGISTRY/commerce-gateway:latest"
+            docker push $ECR_REGISTRY/commerce-gateway:latest
+            echo "image pushed. image=$ECR_REGISTRY/commerce-gateway:latest"
+            cd ..
+
+            cd ./userApi
+            docker build -t $ECR_REGISTRY/commerce-userapi:latest .
+            echo "image created. image=$ECR_REGISTRY/commerce-userapi:latest"
+            docker push $ECR_REGISTRY/commerce-userapi:latest
+            echo "image pushed. image=$ECR_REGISTRY/commerce-userapi:latest"
+            cd ..
+
+            cd ./orderApi
+            docker build -t $ECR_REGISTRY/commerce-orderapi:latest .
+            echo "image created. image=$ECR_REGISTRY/commerce-orderapi:latest"
+            docker push $ECR_REGISTRY/commerce-orderapi:latest
+            echo "image pushed. image=$ECR_REGISTRY/commerce-orderapi:latest"
+            cd ..
+  
+        - name: pull image on user API EC2
+          env: 
+            ECR_REPOSITORY: commerce-userapi
+            EC2_DNS_ADDRESS: ec2-3-36-59-121.ap-northeast-2.compute.amazonaws.com
+          uses: appleboy/ssh-action@v1.0.3
+          with:
+            host: ${{ env.EC2_DNS_ADDRESS }}
+            username: ec2-user
+            key: ${{ secrets.USER_EC2_SSH_PRIVATE_KEY }}
+            script: |
+              sudo aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+              sudo aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              sudo aws configure set region ${{ env.AWS_REGION }}
+              ECR_REGISTRY_LOGIN=$(sudo aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
+              sudo docker stop ${{ env.ECR_REPOSITORY }} || true
+              sudo docker rm ${{ env.ECR_REPOSITORY }} || true
+              sudo docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              sudo docker run -d --name ${{ env.ECR_REPOSITORY }} -e MAILGUN_APIKEY=${{ secrets.MAILGUN_APIKEY }} -e MAILGUN_DOMAIN=${{ secrets.MAILGUN_DOMAIN }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+
+        - name: pull image on order API EC2
+          env: 
+            ECR_REPOSITORY: commerce-orderapi
+            EC2_DNS_ADDRESS: ec2-54-180-135-15.ap-northeast-2.compute.amazonaws.com
+          uses: appleboy/ssh-action@v1.0.3
+          with:
+            host: ${{ env.EC2_DNS_ADDRESS }}
+            username: ec2-user
+            key: ${{ secrets.ORDER_EC2_SSH_PRIVATE_KEY }}
+            script: |
+              sudo aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+              sudo aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              sudo aws configure set region ${{ env.AWS_REGION }}
+              ECR_REGISTRY_LOGIN=$(sudo aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
+              sudo docker stop ${{ env.ECR_REPOSITORY }} || true
+              sudo docker rm ${{ env.ECR_REPOSITORY }} || true
+              sudo docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              sudo docker run -d --name ${{ env.ECR_REPOSITORY }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              
+        - name: pull image on gateway EC2
+          env: 
+              ECR_REPOSITORY: commerce-gateway
+              EC2_DNS_ADDRESS: ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com
+          uses: appleboy/ssh-action@v1.0.3
+          with:
+            host: ${{ env.EC2_DNS_ADDRESS }}
+            username: ec2-user
+            key: ${{ secrets.GW_EC2_SSH_PRIVATE_KEY }}
+            script: |
+              sudo aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+              sudo aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              sudo aws configure set region ${{ env.AWS_REGION }}
+              ECR_REGISTRY_LOGIN=$(sudo aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }})
+              sudo docker stop ${{ env.ECR_REPOSITORY }} || true
+              sudo docker rm ${{ env.ECR_REPOSITORY }} || true
+              sudo docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              sudo docker run -d --name ${{ env.ECR_REPOSITORY }} -p 80:80 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
