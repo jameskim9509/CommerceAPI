@@ -1,0 +1,120 @@
+services:
+  mysql-user:
+    image: mysql:8.0
+    container_name: commerce-mysql-user-test
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: user
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-user-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [commerce-test]
+
+  mysql-order:
+    image: mysql:8.0
+    container_name: commerce-mysql-order-test
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: orders
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-order-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [commerce-test]
+
+  redis:
+    image: redis:7-alpine
+    container_name: commerce-redis-test
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [commerce-test]
+
+  userapi:
+    build:
+      context: ./userApi
+      dockerfile: Dockerfile
+    container_name: commerce-userapi-test
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      MYSQL_HOST: mysql-user
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: user
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+      MAILGUN_APIKEY: ${MAILGUN_APIKEY:-test-key}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-test.local}
+    ports:
+      - "8081:8080"
+    depends_on:
+      mysql-user:
+        condition: service_healthy
+    networks: [commerce-test]
+
+  orderapi:
+    build:
+      context: ./orderApi
+      dockerfile: Dockerfile
+    container_name: commerce-orderapi-test
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      MYSQL_HOST: mysql-order
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: orders
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # orderApi -> userApi 결제 호출. gateway 경유 (gateway가 /user/** 를 userapi:8080 으로 RewritePath)
+      USER_API_URL: http://gateway/user/customer
+    ports:
+      - "8082:8080"
+    depends_on:
+      mysql-order:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [commerce-test]
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: commerce-gateway-test
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      USER_API_URI: http://userapi:8080
+      ORDER_API_URI: http://orderapi:8080
+    ports:
+      - "8080:80"
+    depends_on:
+      - userapi
+      - orderapi
+    networks: [commerce-test]
+
+networks:
+  commerce-test:
+    driver: bridge
+
+volumes:
+  mysql-user-data:
+  mysql-order-data:
