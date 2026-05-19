@@ -39,3 +39,7 @@ out/
 
 ### api Key ###
 API_Key.txt
+
+### Claude Code ###
+CLAUDE.md
+.claude/
