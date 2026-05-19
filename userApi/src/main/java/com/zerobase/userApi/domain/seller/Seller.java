@@ -36,6 +36,7 @@ public class Seller extends BaseEntity{
     private String verificationCode;
     private boolean verify = false;
 
+    @ElementCollection(fetch = FetchType.EAGER)
     private List<String> roles;
 
     public void changeVerificationInfo(

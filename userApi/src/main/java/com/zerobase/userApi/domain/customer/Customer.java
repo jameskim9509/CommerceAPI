@@ -41,6 +41,7 @@ public class Customer extends BaseEntity{
     @Column(columnDefinition = "int default 0")
     private Integer balance;
 
+    @ElementCollection(fetch = FetchType.EAGER)
     private List<String> roles;
 
     public void changeVerificationInfo(
