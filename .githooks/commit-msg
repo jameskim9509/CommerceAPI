@@ -1,0 +1,46 @@
+#!/bin/sh
+# Conventional Commits 형식 검증
+# https://www.conventionalcommits.org/
+
+commit_msg_file=$1
+first_line=$(head -n 1 "$commit_msg_file")
+
+# 머지 / revert / fixup / squash 커밋은 건너뜀
+case "$first_line" in
+  Merge*|Revert*|"fixup!"*|"squash!"*) exit 0 ;;
+esac
+
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_/-]+\))?!?: .+$'
+
+if ! echo "$first_line" | grep -Eq "$pattern"; then
+  echo ""
+  echo "❌ 커밋 메시지가 Conventional Commits 형식이 아닙니다."
+  echo ""
+  echo "현재 메시지:"
+  echo "  $first_line"
+  echo ""
+  echo "올바른 형식:"
+  echo "  <type>(<scope>)?: <subject>"
+  echo ""
+  echo "type 종류:"
+  echo "  feat     - 새 기능"
+  echo "  fix      - 버그 수정"
+  echo "  docs     - 문서"
+  echo "  style    - 포맷팅 (코드 동작 변화 없음)"
+  echo "  refactor - 리팩토링"
+  echo "  perf     - 성능 개선"
+  echo "  test     - 테스트 추가/수정"
+  echo "  build    - 빌드 시스템 / 의존성"
+  echo "  ci       - CI 설정"
+  echo "  chore    - 기타 잡일"
+  echo "  revert   - 이전 커밋 되돌리기"
+  echo ""
+  echo "예시:"
+  echo "  feat(orderApi): 결제 이력 페이징 조회 API 추가"
+  echo "  fix: userApi Dockerfile 의 -Dmailgun 인자 제거"
+  echo "  chore: Flyway 도입 및 DB 스키마 마이그레이션 추가"
+  echo ""
+  exit 1
+fi
+
+exit 0

@@ -1,6 +1,13 @@
 # CommerceAPI
 판매 및 구매 API 개발
 
+- ## 로컬 개발 셋업
+clone 후 한 번 실행해 커밋 메시지 검증 hook 을 활성화합니다.
+```bash
+git config core.hooksPath .githooks
+```
+`.githooks/commit-msg` 가 [Conventional Commits](https://www.conventionalcommits.org/ko/v1.0.0/) 형식(`<type>(<scope>)?: <subject>`)을 강제합니다.
+
 - ## 요구사항 ( REST API 구현 )
 1. JWT 토큰을 활용한 사용자 회원 가입(with 이메일 검증), 로그인 기능 구현
 3. 사용자별 판매자, 구매자 역할 구분
