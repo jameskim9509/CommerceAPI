@@ -16,6 +16,15 @@ spring:
 #        dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
 
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
   redis:
     host: commerceredis-ro.scxzeb.ng.0001.apn2.cache.amazonaws.com
     port: 6379
+
+user-api:
+  url: http://ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com/user/customer
