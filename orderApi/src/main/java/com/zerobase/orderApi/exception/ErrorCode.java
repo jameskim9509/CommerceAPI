@@ -17,7 +17,10 @@ public enum ErrorCode {
     PAYMENT_ERROR(HttpStatus.BAD_REQUEST, "결제에 실패하였습니다. 잔액을 확인해 주세요."),
     CART_CHECK_REQUIRED(HttpStatus.BAD_REQUEST, "장바구니 확인이 필요합니다. 조회를 수행해주세요"),
     NOT_VALID_ORDER(HttpStatus.BAD_REQUEST, "주문 정보가 잘못되었습니다. 확인해주세요."),
-    CART_NOT_EXIST(HttpStatus.BAD_REQUEST, "장바구니가 존재하지 않습니다.");
+    CART_NOT_EXIST(HttpStatus.BAD_REQUEST, "장바구니가 존재하지 않습니다."),
+
+    IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다."),
+    DUPLICATE_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "이전 요청이 처리 중입니다. 잠시 후 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String message;

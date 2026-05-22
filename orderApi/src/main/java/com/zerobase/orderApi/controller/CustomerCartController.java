@@ -2,6 +2,7 @@ package com.zerobase.orderApi.controller;
 
 import com.zerobase.orderApi.domain.Cart;
 import com.zerobase.orderApi.dto.AddProductCartForm;
+import com.zerobase.orderApi.idempotency.IdempotencyService;
 import com.zerobase.orderApi.security.CustomUserDetails;
 import com.zerobase.orderApi.service.CartService;
 import com.zerobase.orderApi.service.OrderService;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class CustomerCartController {
     private final CartService cartService;
     private final OrderService orderService;
+    private final IdempotencyService idempotencyService;
 
     @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping
@@ -62,8 +64,9 @@ public class CustomerCartController {
 
     @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping("/order")
-    public ResponseEntity<Cart> orderCart(
+    public ResponseEntity<?> orderCart(
             @RequestHeader("Authorization") String bearerToken,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody Cart cart
     )
     {
@@ -73,13 +76,13 @@ public class CustomerCartController {
                         .getAuthentication()
                         .getPrincipal();
 
-        return ResponseEntity.ok(
+        return idempotencyService.execute(idempotencyKey, () -> ResponseEntity.ok(
                 orderService.order(
                         bearerToken,
                         userDetails.getId(),
                         userDetails.getUsername(),
                         cart
                 )
-        );
+        ));
     }
 }
