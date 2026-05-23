@@ -19,3 +19,7 @@ spring:
   # 테스트(H2) 에서는 Flyway 를 끄고 JPA ddl-auto 로 스키마를 만든다.
   flyway:
     enabled: false
+
+# @SpringBootTest 가 UserClient (Feign) 빈을 생성할 때 placeholder 가 비어 있지 않도록 더미 값
+user-api:
+  url: http://localhost:8080/user/customer

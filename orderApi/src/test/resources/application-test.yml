@@ -1,9 +1,0 @@
-# =============================================================================
-# orderApi 통합 테스트 프로파일 (gradle test 에서 @ActiveProfiles("test") 로 활성화)
-#  - application.yml 의 H2 + JPA 기본 + Flyway 비활성 위에 덧붙는다.
-#  - @SpringBootTest 가 UserClient (Feign) 빈을 생성할 때
-#    ${user-api.url} placeholder 가 비어 있지 않도록 더미 값을 채운다.
-# =============================================================================
-
-user-api:
-  url: http://localhost:8080/user/customer
