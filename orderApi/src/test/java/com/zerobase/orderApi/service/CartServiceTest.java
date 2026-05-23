@@ -1,12 +1,16 @@
 package com.zerobase.orderApi.service;
 
 import com.zerobase.orderApi.domain.Cart;
+import com.zerobase.orderApi.domain.Order;
 import com.zerobase.orderApi.domain.Product;
 import com.zerobase.orderApi.domain.ProductItem;
 import com.zerobase.orderApi.dto.AddProductCartForm;
 import com.zerobase.orderApi.dto.ProductItemDto;
+import com.zerobase.orderApi.repository.OrderRepository;
 import com.zerobase.orderApi.repository.ProductItemRepository;
 import com.zerobase.orderApi.repository.ProductRepository;
+import com.zerobase.orderApi.saga.SagaEventPublisher;
+import com.zerobase.orderApi.saga.SagaTopics;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,8 +20,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +27,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -44,15 +47,17 @@ public class CartServiceTest {
     private CartService cartService;
 
     @Mock
-    private UserClient userClient;
+    private OrderRepository orderRepository;
+
+    @Mock
+    private SagaEventPublisher sagaEventPublisher;
 
     private OrderService orderService;
 
     @BeforeEach
     void init()
     {
-        orderService =
-                new OrderService(redisClientService, productItemRepository, cartService, userClient);
+        orderService = new OrderService(redisClientService, cartService, orderRepository, sagaEventPublisher);
 
         List<Cart.ProductItem> cartProductItemList = new ArrayList<>(
                 List.of(
@@ -348,46 +353,20 @@ public class CartServiceTest {
                 .noneMatch(it -> it.getName().equals("sweeter chocolate")));
     }
 
-    @DisplayName("장바구니 주문 성공")
+    @DisplayName("장바구니 주문 성공 - Order(PENDING) 생성 및 OrderCreated 이벤트 발행")
     @Test
     void orderCart()
     {
         addCart();
 
-        // given
-        ProductItem item1 = ProductItem.builder()
-                .Id(1L)
-                .sellerId(1L)
-                .name("chocolate")
-                .count(5)
-                .price(5000)
-                .build();
+        // given - 재고는 SAGA 의 StockConsumer 가 검증/차감하므로 여기서는 ProductItem 모킹 불필요
+        ProductItem item1 = ProductItem.builder().Id(1L).sellerId(1L).name("chocolate").count(5).price(5000).build();
+        ProductItem item2 = ProductItem.builder().Id(2L).sellerId(1L).name("sweet chocolate").count(5).price(10000).build();
+        ProductItem item3 = ProductItem.builder().Id(3L).sellerId(1L).name("sweeter chocolate").count(5).price(20000).build();
 
-        ProductItem item2 = ProductItem.builder()
-                .Id(2L)
-                .sellerId(1L)
-                .name("sweet chocolate")
-                .count(5)
-                .price(10000)
-                .build();
-
-        ProductItem item3 = ProductItem.builder()
-                .Id(3L)
-                .sellerId(1L)
-                .name("sweeter chocolate")
-                .count(5)
-                .price(20000)
-                .build();
-
-        given(productItemRepository.findById(1L))
-                .willReturn(Optional.of(item1));
-        given(productItemRepository.findById(2L))
-                .willReturn(Optional.of(item2));
-        given(productItemRepository.findById(3L))
-                .willReturn(Optional.of(item3));
-
-        given(userClient.changeBalance(anyString(), any()))
-                .willReturn(new ResponseEntity<>(null, HttpStatusCode.valueOf(200)));
+        given(productItemRepository.findById(1L)).willReturn(Optional.of(item1));
+        given(productItemRepository.findById(2L)).willReturn(Optional.of(item2));
+        given(productItemRepository.findById(3L)).willReturn(Optional.of(item3));
 
         Cart.Product productForm = Cart.Product.builder()
                 .id(1L)
@@ -422,31 +401,36 @@ public class CartServiceTest {
                 .build();
 
         ArgumentCaptor<Cart> cartArgumentCaptor = ArgumentCaptor.forClass(Cart.class);
+        ArgumentCaptor<Order> orderArgumentCaptor = ArgumentCaptor.forClass(Order.class);
 
         // when
-        orderService.order(
-                "abcdefg", 1L, "james@naver.com", orderCart
-        );
+        orderService.order(1L, "james@naver.com", orderCart);
 
+        // then - 장바구니에서 주문 아이템만큼 차감, 남는 아이템 유지
         verify(redisClientService, times(2)).put(anyLong(), cartArgumentCaptor.capture());
         Cart capturedCart = cartArgumentCaptor.getAllValues().get(1);
         Assertions.assertTrue(
-                capturedCart.getProductList().get(0)
-                        .getProductItemList().stream()
+                capturedCart.getProductList().get(0).getProductItemList().stream()
                         .anyMatch(it -> it.getName().equals("chocolate") && it.getCount().equals(2))
         );
         Assertions.assertTrue(
-                capturedCart.getProductList().get(0)
-                        .getProductItemList().stream()
+                capturedCart.getProductList().get(0).getProductItemList().stream()
                         .noneMatch(it -> it.getName().equals("sweet chocolate"))
         );
         Assertions.assertTrue(
-                capturedCart.getProductList().get(0)
-                        .getProductItemList().stream()
+                capturedCart.getProductList().get(0).getProductItemList().stream()
                         .anyMatch(it -> it.getName().equals("sweeter chocolate") && it.getCount().equals(3))
         );
-        Assertions.assertEquals(4, productItemRepository.findById(1L).get().getCount());
-        Assertions.assertEquals(4, productItemRepository.findById(2L).get().getCount());
-        Assertions.assertEquals(5, productItemRepository.findById(3L).get().getCount());
+
+        // then - Order 가 PENDING 상태로 저장됨
+        verify(orderRepository, times(1)).save(orderArgumentCaptor.capture());
+        Order savedOrder = orderArgumentCaptor.getValue();
+        Assertions.assertEquals(com.zerobase.orderApi.domain.OrderStatus.PENDING, savedOrder.getStatus());
+        Assertions.assertEquals(1L, savedOrder.getCustomerId());
+        Assertions.assertEquals(5000 + 10000, savedOrder.getTotalPrice());
+        Assertions.assertEquals(2, savedOrder.getItems().size());
+
+        // then - OrderCreated 이벤트 발행
+        verify(sagaEventPublisher, times(1)).publish(eq(SagaTopics.ORDER_CREATED), any());
     }
 }

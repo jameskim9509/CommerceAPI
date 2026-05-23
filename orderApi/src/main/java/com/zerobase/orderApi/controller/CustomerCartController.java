@@ -65,7 +65,6 @@ public class CustomerCartController {
     @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping("/order")
     public ResponseEntity<?> orderCart(
-            @RequestHeader("Authorization") String bearerToken,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody Cart cart
     )
@@ -78,7 +77,6 @@ public class CustomerCartController {
 
         return idempotencyService.execute(idempotencyKey, () -> ResponseEntity.ok(
                 orderService.order(
-                        bearerToken,
                         userDetails.getId(),
                         userDetails.getUsername(),
                         cart
