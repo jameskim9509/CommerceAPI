@@ -14,3 +14,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+  # 운영 마이그레이션(V1__init.sql 등) 은 MySQL 전용 문법(BIT(1), ENGINE=InnoDB)을 쓰므로
+  # 테스트(H2) 에서는 Flyway 를 끄고 JPA ddl-auto 로 스키마를 만든다.
+  flyway:
+    enabled: false

@@ -10,7 +10,6 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -18,10 +17,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Import(QueryDslConfig.class)
-@TestPropertySource(properties = {
-        "spring.flyway.enabled=false",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
-})
 class ProductItemOptimisticLockTest {
 
     @Autowired
