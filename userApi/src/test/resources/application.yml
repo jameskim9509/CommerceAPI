@@ -19,3 +19,11 @@ spring:
   # 테스트(H2) 에서는 Flyway 를 끄고 JPA ddl-auto 로 스키마를 만든다.
   flyway:
     enabled: false
+
+  # broker 없이도 @SpringBootTest 컨텍스트가 부팅되도록 리스너 자동 시작 OFF
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: test
+    listener:
+      auto-startup: false

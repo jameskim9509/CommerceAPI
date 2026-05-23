@@ -20,6 +20,14 @@ spring:
   flyway:
     enabled: false
 
+  # broker 없이도 @SpringBootTest 컨텍스트가 부팅되도록 리스너 자동 시작 OFF
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: test
+    listener:
+      auto-startup: false
+
 # @SpringBootTest 가 UserClient (Feign) 빈을 생성할 때 placeholder 가 비어 있지 않도록 더미 값
 user-api:
   url: http://localhost:8080/user/customer
