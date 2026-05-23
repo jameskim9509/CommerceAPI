@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.envers.AuditOverride;
 import org.hibernate.envers.Audited;
+import org.hibernate.envers.NotAudited;
 
 @Entity
 @Getter
@@ -22,6 +23,10 @@ public class ProductItem extends BaseEntity{
     private String name;
     private Integer price;
     private Integer count;
+
+    @Version
+    @NotAudited
+    private Long version;
 
     @ManyToOne
     @JoinColumn(name = "PRODUCT_ID")
