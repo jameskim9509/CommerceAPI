@@ -20,7 +20,9 @@ public enum ErrorCode {
     CART_NOT_EXIST(HttpStatus.BAD_REQUEST, "장바구니가 존재하지 않습니다."),
 
     IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다."),
-    DUPLICATE_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "이전 요청이 처리 중입니다. 잠시 후 다시 시도해주세요.");
+    DUPLICATE_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "이전 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."),
+
+    STOCK_CONFLICT(HttpStatus.CONFLICT, "재고가 다른 요청에 의해 변경되었습니다. 잠시 후 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String message;

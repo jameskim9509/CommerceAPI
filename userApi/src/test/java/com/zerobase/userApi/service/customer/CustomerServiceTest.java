@@ -2,12 +2,18 @@ package com.zerobase.userApi.service.customer;
 
 import com.zerobase.userApi.dto.SendMailDto;
 import com.zerobase.userApi.dto.SignupDto;
+import com.zerobase.userApi.service.MailgunClient;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 
 import java.time.LocalDate;
 
@@ -19,6 +25,14 @@ class CustomerServiceTest {
 
     @Autowired
     private CustomerService service;
+
+    @MockBean
+    private MailgunClient mailgunClient;
+
+    @BeforeEach
+    void stubMailgun() {
+        given(mailgunClient.sendEmail(any())).willReturn(ResponseEntity.ok().build());
+    }
 
     @DisplayName("signUp 성공")
     @Test
