@@ -6,14 +6,22 @@ import com.zerobase.userApi.dto.ChangeBalanceDto;
 import com.zerobase.userApi.dto.SigninDto;
 import com.zerobase.userApi.dto.SignupDto;
 import com.zerobase.userApi.repository.customer.CustomerRepository;
+import com.zerobase.userApi.service.MailgunClient;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 
 import java.time.LocalDate;
 
@@ -22,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class CustomerControllerTest {
 
     @Autowired
@@ -32,6 +41,14 @@ class CustomerControllerTest {
 
     @Autowired
     private CustomerRepository customerRepository;
+
+    @MockBean
+    private MailgunClient mailgunClient;
+
+    @BeforeEach
+    void stubMailgun() {
+        given(mailgunClient.sendEmail(any())).willReturn(ResponseEntity.ok().build());
+    }
 
     @DisplayName("회원가입 및 검증, 로그인 후 예치금 입금 성공")
     @Test

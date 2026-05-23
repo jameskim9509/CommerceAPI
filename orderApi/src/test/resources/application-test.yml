@@ -1,0 +1,13 @@
+# =============================================================================
+# orderApi 통합 테스트 프로파일 (gradle test 에서 @ActiveProfiles("test") 로 활성화)
+#  - application.yml 의 H2 + JPA 기본 설정 위에 덧붙는다.
+#  - 외부 의존(userApi Feign, Redis, Flyway) 은 더미/비활성으로 치환해
+#    @SpringBootTest 의 컨텍스트 로딩이 외부 자원 없이도 완료되도록 한다.
+# =============================================================================
+
+spring:
+  flyway:
+    enabled: false
+
+user-api:
+  url: http://localhost:8080/user/customer
