@@ -48,7 +48,7 @@ sequenceDiagram
     U->>O: POST /order
     O->>US: -10000 (결제)
     US-->>O: 200 OK (잔액 차감 COMMIT)
-    O->>O: 재고 차감 → OptimisticLockException
+    Note over O: 재고 차감 → OptimisticLockException
     O->>US: +10000 (동기 보상, 환불 호출)
     US--xO: 5xx / Timeout / Connection refused
     Note over O,US: catch 블록의 보상 호출이 실패<br/>재시도 메커니즘 없음
@@ -68,7 +68,7 @@ sequenceDiagram
     U->>O: POST /order
     O->>US: -10000 (결제)
     US-->>O: 200 OK (COMMIT)
-    O->>O: 재고 차감 → OptimisticLockException
+    Note over O: 재고 차감 → OptimisticLockException
     Note over O: catch 블록 진입 직전<br/>OOMKill / SIGTERM / Pod evicted<br/>→ 프로세스 종료
     Note over U,US: 결과: 결제는 커밋,<br/>보상 catch 블록은 실행되지 못함<br/>→ 영구 불일치
 ```
@@ -151,6 +151,109 @@ sequenceDiagram
 - 모든 컨슈머는 **멱등성** 보장 (at-least-once delivery 가정 하에 중복 배달이 발생해도 같은 결과로 수렴).
 - `Order` 엔티티는 상태 머신 (PENDING → PAID → CONFIRMED / FAILED) 으로 모델링되어 SAGA 의 현재 위치를 추적한다.
 
+### 적용된 코드 흐름 (forward path)
+
+클라이언트 요청부터 결제·재고 확정까지 실제 컴포넌트 단위로 본 흐름.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as 클라이언트
+    participant Ctrl as orderApi CustomerCartController
+    participant Idem as IdempotencyService (Redis)
+    participant Ord as OrderService
+    participant ODB as orders DB
+    participant K as Kafka
+    participant Pay as userApi PaymentConsumer
+    participant Bal as CustomerBalanceHistoryService
+    participant UDB as user DB
+    participant Stk as orderApi StockConsumer
+    participant Stock as StockReservationService
+
+    Client->>Ctrl: POST /customer/cart/order<br/>Idempotency-Key 헤더
+    Ctrl->>Idem: execute(key, action)
+    Note over Idem: SETNX IN_PROGRESS
+    Idem->>Ord: order(customerId, username, cart)
+    Note over Ord: 카트 검증 + 주문 아이템 차감
+    Ord->>ODB: save Order PENDING + items
+    Ord->>K: publish OrderCreated
+    Ord-->>Idem: OrderDto PENDING
+    Note over Idem: SET COMPLETED + 응답 캐시 (24h)
+    Ctrl-->>Client: 200 OK orderId, status PENDING
+
+    K->>Pay: deliver OrderCreated
+    Note over Pay: ProcessedEvent 멱등성 체크
+    Pay->>Bal: changeBalance customerId, totalPrice
+    Bal->>UDB: 잔액 차감 + 이력 저장
+    Pay->>K: publish PaymentDeducted
+
+    K->>Stk: deliver PaymentDeducted
+    Note over Stk: ProcessedEvent 멱등성 체크
+    Stk->>Stock: reserveStock(orderId) REQUIRES_NEW
+    Note over Stock: Order.markPaid PENDING→PAID
+    Stock->>ODB: ProductItem.count 차감 (낙관적 락)
+    Note over Stock: Order.markConfirmed PAID→CONFIRMED
+
+    Note over Client,Ord: 비동기 처리 종료. Order=CONFIRMED
+    Client->>Ctrl: GET /customer/orders/{orderId}
+    Ctrl-->>Client: 200 OK status CONFIRMED
+```
+
+핵심 포인트:
+- **진입 응답은 즉시 PENDING** — 결제·재고가 동기 호출이 아니므로 사용자 응답 latency 가 broker 왕복 시간만큼 짧아진다.
+- **두 컨슈머가 모두 멱등** — `ProcessedEvent(eventId, consumerName)` 으로 중복 배달 시 no-op.
+- **재고 차감은 별도 트랜잭션** — `StockReservationService.reserveStock()` 이 `REQUIRES_NEW` 라 낙관적 락 충돌(ADR-002)을 호출자(`StockConsumer`)가 catch 해서 `StockReservationFailed` 보상 이벤트로 변환할 수 있다.
+- **클라이언트는 `GET /customer/orders/{id}`** 로 최종 상태(CONFIRMED / FAILED) 를 polling. 진입 응답의 `orderId` 가 추적 키.
+
+### 적용된 코드 흐름 (compensation path)
+
+위 forward path 의 결제 단계 또는 재고 차감 단계에서 실패했을 때의 보상 흐름. `Order(PENDING)` 저장과 `OrderCreated` 발행까지는 정상 경로와 동일하므로 그 이후만 표기한다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as 클라이언트
+    participant Ord as orderApi consumers
+    participant ODB as orders DB
+    participant K as Kafka
+    participant Pay as userApi PaymentConsumer
+    participant Bal as CustomerBalanceHistoryService
+    participant UDB as user DB
+    participant Ref as userApi RefundConsumer
+
+    Note over Ord,ODB: Order=PENDING 저장 + OrderCreated 발행 완료
+
+    alt 결제 단계 실패 (잔액 부족 등)
+        K->>Pay: deliver OrderCreated
+        Pay->>Bal: changeBalance customerId, totalPrice
+        Note over Bal: 잔액 부족 → CustomException
+        Pay->>K: publish PaymentFailed
+        K->>Ord: deliver PaymentFailed
+        Note over Ord: OrderStateConsumer.handlePaymentFailed
+        Ord->>ODB: Order.markFailed reason 결제 실패
+    else 재고 차감 단계 실패 (낙관적 락 충돌)
+        Note over Ord: StockConsumer 가 reserveStock 호출,<br/>커밋 시 ObjectOptimisticLockingFailureException
+        Ord->>K: publish StockReservationFailed
+        K->>Ref: deliver StockReservationFailed
+        Ref->>Bal: changeBalance customerId, +totalPrice
+        Bal->>UDB: 환불 + 이력 저장
+        Ref->>K: publish PaymentReverted
+        K->>Ord: deliver PaymentReverted
+        Note over Ord: OrderStateConsumer.handlePaymentReverted
+        Ord->>ODB: Order.markFailed reason 환불 완료
+    end
+
+    Note over Client,Ord: 최종 상태 Order=FAILED
+    Client->>Ord: GET /customer/orders/{orderId}
+    Ord-->>Client: 200 OK status FAILED, failureReason
+```
+
+핵심 포인트:
+- **결제 실패** 는 `OrderCreated` 도착 시점에 바로 분기 → `PaymentFailed` 1회로 종료. userApi 잔액 / 재고 모두 변경 없음.
+- **재고 충돌** 은 `Order(PAID)` 까지 갔다가 commit 시 롤백되므로 결제 환불이 필요 → `StockReservationFailed` → `PaymentReverted` 2단계.
+- 두 경로 모두 `OrderStateConsumer` 가 `Order.markFailed()` 로 수렴 — 컨슈머 입장에서는 `failureReason` 만 다름.
+- 만약 어느 컨슈머 단계가 일시 장애로 실패하면 broker 가 ack 받을 때까지 재배달 → 컨슈머는 `ProcessedEvent` 로 중복 처리 방지.
+
 ## Choreography SAGA 도입 후 시나리오
 
 ### 시나리오 1'. 보상 이벤트 처리가 실패해도 broker 가 재시도
@@ -167,10 +270,10 @@ sequenceDiagram
     US-->>B: nack (DB 일시 오류)
     Note over B: backoff 후 재배달
     B->>US: redeliver StockReservationFailed
-    US->>US: 환불 처리 (멱등 보장)
+    Note over US: 환불 처리 (멱등 보장)
     US-->>B: ack + publish PaymentReverted
     B->>O: deliver PaymentReverted
-    O->>O: Order(FAILED) 마킹
+    Note over O: Order(FAILED) 마킹
     Note over O,US: 결과: 보상이 결국(eventually) 성공.<br/>여러 번 재시도해도 멱등이라 안전.
 ```
 
@@ -191,7 +294,7 @@ sequenceDiagram
     Note over B: 메시지는 broker 에 남음
     Note over O2: k8s 가 pod 2 를 새로 띄움
     B->>O2: deliver PaymentDeducted
-    O2->>O2: 재고 차감 시도
+    Note over O2: 재고 차감 시도
     Note over O1,O2: 결과: 노드 교체 후에도<br/>SAGA 가 끊기지 않고 이어 처리됨
 ```
 
