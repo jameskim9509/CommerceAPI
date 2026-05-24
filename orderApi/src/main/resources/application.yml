@@ -26,5 +26,17 @@ spring:
     host: commerceredis-ro.scxzeb.ng.0001.apn2.cache.amazonaws.com
     port: 6379
 
+  # ADR-003: Choreography SAGA — Kafka producer/consumer
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: orderapi-saga
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
 user-api:
   url: http://ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com/user/customer

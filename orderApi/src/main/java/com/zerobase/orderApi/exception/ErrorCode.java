@@ -22,7 +22,10 @@ public enum ErrorCode {
     IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다."),
     DUPLICATE_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "이전 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."),
 
-    STOCK_CONFLICT(HttpStatus.CONFLICT, "재고가 다른 요청에 의해 변경되었습니다. 잠시 후 다시 시도해주세요.");
+    STOCK_CONFLICT(HttpStatus.CONFLICT, "재고가 다른 요청에 의해 변경되었습니다. 잠시 후 다시 시도해주세요."),
+
+    INVALID_ORDER_STATE_TRANSITION(HttpStatus.INTERNAL_SERVER_ERROR, "허용되지 않은 주문 상태 전이입니다."),
+    ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "주문을 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

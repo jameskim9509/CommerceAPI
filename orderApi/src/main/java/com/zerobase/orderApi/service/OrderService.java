@@ -1,124 +1,132 @@
 package com.zerobase.orderApi.service;
 
 import com.zerobase.orderApi.domain.Cart;
-import com.zerobase.orderApi.domain.ProductItem;
-import com.zerobase.orderApi.dto.ChangeBalanceDto;
+import com.zerobase.orderApi.domain.Order;
+import com.zerobase.orderApi.domain.OrderItem;
+import com.zerobase.orderApi.domain.OrderStatus;
+import com.zerobase.orderApi.dto.OrderDto;
 import com.zerobase.orderApi.exception.CustomException;
 import com.zerobase.orderApi.exception.ErrorCode;
-import com.zerobase.orderApi.repository.ProductItemRepository;
-import feign.FeignException;
+import com.zerobase.orderApi.repository.OrderRepository;
+import com.zerobase.orderApi.saga.SagaEventPublisher;
+import com.zerobase.orderApi.saga.SagaTopics;
+import com.zerobase.orderApi.saga.event.SagaEvents;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * ADR-003: Choreography SAGA 의 진입점.
+ *  - 장바구니 검증 후 Order(PENDING) 을 영속화하고 OrderCreated 이벤트를 발행한다.
+ *  - 결제(userApi) / 재고 차감 / 보상은 모두 컨슈머가 처리하므로 동기 호출은 없다.
+ */
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+
     private final RedisClientService redisClientService;
-    private final ProductItemRepository productItemRepository;
     private final CartService cartService;
-    private final UserClient userClient;
+    private final OrderRepository orderRepository;
+    private final SagaEventPublisher publisher;
 
     @Transactional
-    public Cart order(String bearerToken, Long customerId, String username, Cart orderCart)
-    {
-        // 장바구니 확인
-        Cart curCart =  redisClientService.get(customerId, Cart.class);
-        // 롤백 상황에 대비
+    public OrderDto order(Long customerId, String username, Cart orderCart) {
+        Cart curCart = redisClientService.get(customerId, Cart.class);
+        if (curCart == null) throw new CustomException(ErrorCode.CART_NOT_EXIST);
         Cart cloneCurCart = curCart.clone();
-        if(curCart == null)
-            throw new CustomException(ErrorCode.CART_NOT_EXIST);
-        try
-        {
-            // 현재 장바구니에 대한 검증
+
+        try {
             cartService.refreshCart(curCart, customerId);
-            // 주문할 장바구니에 대한 검증
             cartService.refreshCart(orderCart, customerId);
 
-            if(curCart.getMessages().size() > 0)
-                throw new CustomException(ErrorCode.CART_CHECK_REQUIRED);
-            if(orderCart.getMessages().size() > 0)
-                throw new CustomException(ErrorCode.NOT_VALID_ORDER);
+            if (!curCart.getMessages().isEmpty()) throw new CustomException(ErrorCode.CART_CHECK_REQUIRED);
+            if (!orderCart.getMessages().isEmpty()) throw new CustomException(ErrorCode.NOT_VALID_ORDER);
 
-            Map<Long, Cart.ProductItem> curCartProductItemMap =
-                    curCart.getProductList().stream()
-                            .flatMap(p -> p.getProductItemList().stream())
-                                    .collect(Collectors.toMap(Cart.ProductItem::getId, it -> it));
+            decrementCurCart(curCart, orderCart);
+            removeZeroCountItems(curCart);
 
-            // 기존 장바구니에서 주문할 아이템의 수량을 빼준다.
-            orderCart.getProductList().stream()
-                    .flatMap(p -> p.getProductItemList().stream())
-                    .forEach(
-                            orderIt -> {
-                                Cart.ProductItem curIt = curCartProductItemMap.get(orderIt.getId());
-                                if(curIt == null)
-                                    throw new CustomException(ErrorCode.NOT_VALID_ORDER);
-                                else
-                                {
-                                    if(curIt.getCount() < orderIt.getCount())
-                                        throw new CustomException(ErrorCode.NOT_VALID_ORDER);
+            int totalPrice = totalPrice(orderCart);
 
-                                    curIt.setCount(curIt.getCount() - orderIt.getCount());
-                                }
-                            }
-                    );
-
-            // 수량이 0이 된 장바구니 아이템 제거
-            Iterator<Cart.Product> productIterator = curCart.getProductList().iterator();
-            while(productIterator.hasNext())
-            {
-                Iterator<Cart.ProductItem> productItemIterator =
-                        productIterator.next().getProductItemList().iterator();
-                while(productItemIterator.hasNext())
-                {
-                    Cart.ProductItem it = productItemIterator.next();
-                    if(it.getCount().equals(0)) productItemIterator.remove();
-                }
-            }
-
-            // 총 결제 금액
-            int totalPrice = orderCart.getProductList().stream()
-                    .flatMap(p -> p.getProductItemList().stream())
-                            .mapToInt(it -> it.getCount() * it.getPrice())
-                                    .sum();
-
-            // 결제 시도
-            try {
-                userClient.changeBalance(
-                        bearerToken, ChangeBalanceDto.Input.builder()
-                                .from(username)
-                                .message("상품 주문")
-                                .money(-totalPrice)
-                                .build()
-                );
-            } catch (FeignException fe)
-            {
-                throw new CustomException(ErrorCode.PAYMENT_ERROR);
-            }
-
-            // 재고 변경
-            orderCart.getProductList().stream()
-                    .flatMap(p -> p.getProductItemList().stream())
-                    .forEach(it -> {
-                                ProductItem item = productItemRepository.findById(it.getId()).get();
-                                item.setCount(item.getCount() - it.getCount());
-                            }
-                    );
+            Order order = Order.builder()
+                    .customerId(customerId)
+                    .username(username)
+                    .status(OrderStatus.PENDING)
+                    .totalPrice(totalPrice)
+                    .items(buildOrderItems(orderCart))
+                    .build();
+            orderRepository.save(order);
 
             redisClientService.put(customerId, curCart);
 
-            return curCart;
-        }
-        catch (CustomException e)
-        {
-            // 변경 취소
+            publisher.publish(SagaTopics.ORDER_CREATED, SagaEvents.OrderCreated.builder()
+                    .eventId(UUID.randomUUID())
+                    .orderId(order.getId())
+                    .customerId(customerId)
+                    .username(username)
+                    .totalPrice(totalPrice)
+                    .build());
+
+            return OrderDto.from(order);
+        } catch (CustomException e) {
             redisClientService.put(customerId, cloneCurCart);
             throw e;
         }
+    }
+
+    private void decrementCurCart(Cart curCart, Cart orderCart) {
+        Map<Long, Cart.ProductItem> curMap = curCart.getProductList().stream()
+                .flatMap(p -> p.getProductItemList().stream())
+                .collect(Collectors.toMap(Cart.ProductItem::getId, it -> it));
+
+        orderCart.getProductList().stream()
+                .flatMap(p -> p.getProductItemList().stream())
+                .forEach(orderIt -> {
+                    Cart.ProductItem curIt = curMap.get(orderIt.getId());
+                    if (curIt == null) throw new CustomException(ErrorCode.NOT_VALID_ORDER);
+                    if (curIt.getCount() < orderIt.getCount()) throw new CustomException(ErrorCode.NOT_VALID_ORDER);
+                    curIt.setCount(curIt.getCount() - orderIt.getCount());
+                });
+    }
+
+    private void removeZeroCountItems(Cart curCart) {
+        Iterator<Cart.Product> productIt = curCart.getProductList().iterator();
+        while (productIt.hasNext()) {
+            Iterator<Cart.ProductItem> itemIt = productIt.next().getProductItemList().iterator();
+            while (itemIt.hasNext()) {
+                if (itemIt.next().getCount().equals(0)) itemIt.remove();
+            }
+        }
+    }
+
+    private int totalPrice(Cart orderCart) {
+        return orderCart.getProductList().stream()
+                .flatMap(p -> p.getProductItemList().stream())
+                .mapToInt(it -> it.getCount() * it.getPrice())
+                .sum();
+    }
+
+    private List<OrderItem> buildOrderItems(Cart orderCart) {
+        return orderCart.getProductList().stream()
+                .flatMap(p -> p.getProductItemList().stream())
+                .map(it -> OrderItem.builder()
+                        .productItemId(it.getId())
+                        .name(it.getName())
+                        .count(it.getCount())
+                        .price(it.getPrice())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public OrderDto getOrder(Long customerId, Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ORDER_NOT_FOUND));
+        if (!order.getCustomerId().equals(customerId)) {
+            throw new CustomException(ErrorCode.ORDER_NOT_FOUND);
+        }
+        return OrderDto.from(order);
     }
 }
