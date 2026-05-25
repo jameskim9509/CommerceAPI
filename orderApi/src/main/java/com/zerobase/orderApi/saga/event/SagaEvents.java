@@ -13,7 +13,7 @@ public class SagaEvents {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class OrderCreated {
+    public static class OrderCreated implements SagaEvent {
         private UUID eventId;
         private Long orderId;
         private Long customerId;
@@ -25,7 +25,7 @@ public class SagaEvents {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class PaymentDeducted {
+    public static class PaymentDeducted implements SagaEvent {
         private UUID eventId;
         private Long orderId;
     }
@@ -34,7 +34,7 @@ public class SagaEvents {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class PaymentFailed {
+    public static class PaymentFailed implements SagaEvent {
         private UUID eventId;
         private Long orderId;
         private String reason;
@@ -44,7 +44,7 @@ public class SagaEvents {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class StockReservationFailed {
+    public static class StockReservationFailed implements SagaEvent {
         private UUID eventId;
         private Long orderId;
         private Long customerId;
@@ -57,7 +57,7 @@ public class SagaEvents {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class PaymentReverted {
+    public static class PaymentReverted implements SagaEvent {
         private UUID eventId;
         private Long orderId;
     }
