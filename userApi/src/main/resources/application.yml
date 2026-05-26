@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  application:
+    name: user-api
   datasource:
     url: jdbc:mysql://commerce-mysql.c90qy2aumeaj.ap-northeast-2.rds.amazonaws.com:3306/user
     username: commerce
@@ -32,3 +34,12 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# ADR-005: Eureka 클라이언트 등록
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.cloud.client.hostname:${HOSTNAME:localhost}}:${server.port}

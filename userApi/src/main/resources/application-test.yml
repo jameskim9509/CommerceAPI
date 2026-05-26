@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  application:
+    name: user-api
   datasource:
     url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${MYSQL_USER}
@@ -29,7 +31,18 @@ mailgun:
   apiKey: ${MAILGUN_APIKEY}
   domain: ${MAILGUN_DOMAIN}
 
+# ADR-005: Eureka 클라이언트 등록
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+    # 다인스턴스 환경에서 인스턴스별 고유 식별자
+    instance-id: ${spring.application.name}:${spring.cloud.client.hostname:${HOSTNAME:localhost}}:${server.port}
+
 logging:
   level:
     org.hibernate.SQL: DEBUG
     com.zerobase.userApi: DEBUG
+    com.netflix.discovery: INFO

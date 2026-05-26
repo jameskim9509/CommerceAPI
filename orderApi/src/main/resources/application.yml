@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  application:
+    name: order-api
   datasource:
     url: jdbc:mysql://commerce-mysql.c90qy2aumeaj.ap-northeast-2.rds.amazonaws.com:3306/orders
     username: commerce
@@ -40,3 +42,13 @@ spring:
 
 user-api:
   url: http://ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com/user/customer
+
+# ADR-005: Eureka 클라이언트 등록
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+    # 다인스턴스에서 인스턴스별 고유 식별자 (host 가 같아도 구분되도록)
+    instance-id: ${spring.application.name}:${spring.cloud.client.hostname:${HOSTNAME:localhost}}:${server.port}
