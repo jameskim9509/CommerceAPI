@@ -74,6 +74,25 @@ services:
       start_period: 30s
     networks: [commerce-test]
 
+  # ADR-005: 서비스 디스커버리 레지스트리
+  eureka:
+    build:
+      context: ./eurekaServer
+      dockerfile: Dockerfile
+    container_name: commerce-eureka-test
+    ports:
+      - "8761:8761"
+    healthcheck:
+      # Eureka Server 의 status 페이지로 ready 확인
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8761/ > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [commerce-test]
+
+  # ADR-005: userApi 는 단일 인스턴스 유지 (orderApi LB 효과만 측정하기 위한 고정 변수).
+  # 인스턴스당 자원 4 CPU / 2GB 로 제한 → 단일 인스턴스 천장 도달 시점을 명확히.
   userapi:
     build:
       context: ./userApi
@@ -89,6 +108,8 @@ services:
       MAILGUN_APIKEY: ${MAILGUN_APIKEY:-test-key}
       MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-test.local}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # ADR-005: Eureka 클라이언트 등록 대상
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
     ports:
       - "8081:8080"
     depends_on:
@@ -96,13 +117,23 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      eureka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
     networks: [commerce-test]
 
+  # ADR-005: orderApi 는 다중 인스턴스 측정 대상.
+  #   `docker compose -f docker-compose.test.yml up --scale orderapi=4` 로 N 인스턴스 기동.
+  # 인스턴스당 자원 4 CPU / 2GB 로 제한 → 분산 효과를 정량적으로 비교.
+  # container_name 과 호스트 port 바인딩은 제거 (--scale 시 충돌 방지). 외부 접근은 gateway 경유.
   orderapi:
     build:
       context: ./orderApi
       dockerfile: Dockerfile
-    container_name: commerce-orderapi-test
     environment:
       SPRING_PROFILES_ACTIVE: test
       MYSQL_HOST: mysql-order
@@ -115,8 +146,8 @@ services:
       # orderApi -> userApi 결제 호출. gateway 경유 (gateway가 /user/** 를 userapi:8080 으로 RewritePath)
       USER_API_URL: http://gateway/user/customer
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-    ports:
-      - "8082:8080"
+      # ADR-005: Eureka 클라이언트 등록 대상
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
     depends_on:
       mysql-order:
         condition: service_healthy
@@ -124,8 +155,17 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      eureka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
     networks: [commerce-test]
 
+  # ADR-005: gateway 는 단일 인스턴스 + lb:// 라우팅.
+  # 인스턴스당 자원 4 CPU / 2GB 로 제한 (백엔드 분산 효과와 gateway 자체 한계를 분리).
   gateway:
     build:
       context: ./gateway
@@ -133,13 +173,23 @@ services:
     container_name: commerce-gateway-test
     environment:
       SPRING_PROFILES_ACTIVE: test
-      USER_API_URI: http://userapi:8080
-      ORDER_API_URI: http://orderapi:8080
+      # ADR-005: 라우트는 lb://order-api, lb://user-api 로 정의됨.
+      # 백엔드 인스턴스 주소는 Eureka 에서 동적 발견.
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
     ports:
       - "8080:80"
     depends_on:
-      - userapi
-      - orderapi
+      eureka:
+        condition: service_healthy
+      userapi:
+        condition: service_started
+      orderapi:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
     networks: [commerce-test]
 
 networks:
