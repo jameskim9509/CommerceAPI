@@ -36,3 +36,10 @@ outbox:
 # @SpringBootTest 가 UserClient (Feign) 빈을 생성할 때 placeholder 가 비어 있지 않도록 더미 값
 user-api:
   url: http://localhost:8080/user/customer
+
+# ADR-005: Eureka Server 없이도 테스트 컨텍스트가 부팅되도록 클라이언트 비활성화
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false

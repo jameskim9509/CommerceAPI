@@ -1,0 +1,20 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+
+eureka:
+  client:
+    # Eureka Server 자기 자신은 다른 Eureka 에 등록할 필요 없음
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  server:
+    # ADR-005 측정 환경에서는 self-preservation 비활성:
+    # 인스턴스 추가/제거가 빠르게 registry 에 반영되도록 한다.
+    # 운영 환경에서는 true 권장.
+    enable-self-preservation: false
+    eviction-interval-timer-in-ms: 5000

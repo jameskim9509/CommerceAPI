@@ -32,3 +32,10 @@ spring:
 outbox:
   poller:
     enabled: false
+
+# ADR-005: Eureka Server 없이도 테스트 컨텍스트가 부팅되도록 클라이언트 비활성화
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
