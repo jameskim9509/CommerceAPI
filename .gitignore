@@ -43,3 +43,13 @@ API_Key.txt
 ### Claude Code ###
 CLAUDE.md
 .claude/
+
+### Node / Monorepo ###
+node_modules/
+dist/
+.turbo/
+*.log
+.pnpm-store/
+.env
+.env.local
+.env.*.local
