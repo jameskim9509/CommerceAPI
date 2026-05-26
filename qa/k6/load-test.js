@@ -229,22 +229,25 @@ function textSummary(data) {
     const lines = [];
     lines.push(`\n=== ADR-005 시나리오 3 측정 결과 (${EXPERIMENT_LABEL}) ===\n`);
 
+    const fmt = (v) => (typeof v === 'number') ? v.toFixed(1) : 'n/a';
+    const fmtPct = (v) => (typeof v === 'number') ? (v * 100).toFixed(2) + '%' : 'n/a';
+
     const orderDur = data.metrics['http_req_duration{name:order_create}'];
-    if (orderDur) {
-        lines.push(`order_create p50:  ${orderDur.values['p(50)'].toFixed(1)} ms`);
-        lines.push(`order_create p95:  ${orderDur.values['p(95)'].toFixed(1)} ms`);
-        lines.push(`order_create p99:  ${orderDur.values['p(99)'].toFixed(1)} ms`);
+    if (orderDur && orderDur.values) {
+        lines.push(`order_create p50:  ${fmt(orderDur.values['p(50)'])} ms`);
+        lines.push(`order_create p95:  ${fmt(orderDur.values['p(95)'])} ms`);
+        lines.push(`order_create p99:  ${fmt(orderDur.values['p(99)'])} ms`);
     }
     const orderFail = data.metrics['http_req_failed{name:order_create}'];
-    if (orderFail) {
-        lines.push(`order_create fail rate: ${(orderFail.values.rate * 100).toFixed(2)}%`);
+    if (orderFail && orderFail.values) {
+        lines.push(`order_create fail rate: ${fmtPct(orderFail.values.rate)}`);
     }
     const reqs = data.metrics['http_reqs'];
-    if (reqs) {
-        lines.push(`총 요청: ${reqs.values.count}, throughput: ${reqs.values.rate.toFixed(1)} req/s`);
+    if (reqs && reqs.values) {
+        lines.push(`총 요청: ${reqs.values.count}, throughput: ${fmt(reqs.values.rate)} req/s`);
     }
     const violations = data.metrics['duplicate_order_responses'];
-    if (violations) {
+    if (violations && violations.values) {
         lines.push(`멱등성 위반: ${violations.values.count}`);
     }
     lines.push('');

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Git Bash (Windows) path-conversion 회피
+export MSYS_NO_PATHCONV=1
 # =============================================================================
 # ADR-005 시나리오 3: E1 / E2 / E3 자동 측정 오케스트레이션
 #
@@ -60,11 +62,12 @@ for i in "${!experiments[@]}"; do
         mysql -uroot -proot orders < "$QA_DIR/seed/order-seed.sql"
 
     # 5. k6 부하 테스트
+    # threshold 위반 시 k6 가 exit code 99 반환 → 측정 자체는 성공이므로 || true 로 흡수
     echo "[$LABEL] k6 부하 테스트 시작 ..."
     TEST_START=$(date -u +%FT%TZ)
     EXPERIMENT_LABEL="$LABEL" docker compose -f "$COMPOSE_FILE" run --rm k6 \
         run --summary-export "/results/${LABEL}-k6-summary.json" \
-        /scripts/load-test.js
+        /scripts/load-test.js || true
     TEST_END=$(date -u +%FT%TZ)
 
     # 6. 부하 종료 후 안정화 대기 (Outbox 처리 + SAGA 완결)

@@ -1,0 +1,2064 @@
+
+=================================================================
+ 실험 E1 : orderApi 인스턴스 1 개
+=================================================================
+ Volume qa_mysql-user-qa-data Removed 
+ Volume qa_mysql-order-qa-data Removed 
+ Network qa_commerce-qa Removed 
+[E1] 스택 기동 (--scale orderapi=1) ...
+ Network qa_commerce-qa Creating 
+ Network qa_commerce-qa Created 
+ Volume qa_mysql-user-qa-data Creating 
+ Volume qa_mysql-user-qa-data Created 
+ Volume qa_mysql-order-qa-data Creating 
+ Volume qa_mysql-order-qa-data Created 
+ Container qa-eureka-1 Creating 
+ Container qa-redis-1 Creating 
+ Container qa-mysql-user-1 Creating 
+ Container qa-kafka-1 Creating 
+ Container qa-mysql-order-1 Creating 
+ Container qa-eureka-1 Created 
+ Container qa-kafka-1 Created 
+ Container qa-mysql-user-1 Created 
+ Container qa-userapi-1 Creating 
+ Container qa-redis-1 Created 
+ Container qa-mysql-order-1 Created 
+ Container qa-orderapi-1 Creating 
+ Container qa-userapi-1 Created 
+ Container qa-orderapi-1 Created 
+ Container qa-gateway-1 Creating 
+ Container qa-gateway-1 Created 
+ Container qa-kafka-1 Starting 
+ Container qa-mysql-order-1 Starting 
+ Container qa-mysql-user-1 Starting 
+ Container qa-redis-1 Starting 
+ Container qa-eureka-1 Starting 
+ Container qa-mysql-order-1 Started 
+ Container qa-kafka-1 Started 
+ Container qa-mysql-user-1 Started 
+ Container qa-redis-1 Started 
+ Container qa-eureka-1 Started 
+ Container qa-mysql-user-1 Waiting 
+ Container qa-kafka-1 Waiting 
+ Container qa-eureka-1 Waiting 
+ Container qa-eureka-1 Waiting 
+ Container qa-mysql-order-1 Waiting 
+ Container qa-redis-1 Waiting 
+ Container qa-kafka-1 Waiting 
+ Container qa-redis-1 Healthy 
+ Container qa-kafka-1 Healthy 
+ Container qa-kafka-1 Healthy 
+ Container qa-mysql-order-1 Healthy 
+ Container qa-mysql-user-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-orderapi-1 Starting 
+ Container qa-userapi-1 Starting 
+ Container qa-orderapi-1 Started 
+ Container qa-userapi-1 Started 
+ Container qa-eureka-1 Waiting 
+ Container qa-eureka-1 Healthy 
+ Container qa-gateway-1 Starting 
+ Container qa-gateway-1 Started 
+[E1] 서비스 ready 대기 ...
+[E1] 시드 SQL 실행 ...
+mysql: [Warning] Using a password on the command line interface can be insecure.
+table_name	cnt
+customers	1000
+customer_roles	1000
+sellers	1
+mysql: [Warning] Using a password on the command line interface can be insecure.
+table_name	cnt
+products	100
+product_items	500
+[E1] k6 부하 테스트 시작 ...
+ Container qa-redis-1 Running 
+ Container qa-eureka-1 Running 
+ Container qa-mysql-user-1 Running 
+ Container qa-kafka-1 Running 
+ Container qa-mysql-order-1 Running 
+ Container qa-userapi-1 Running 
+ Container qa-orderapi-1 Running 
+ Container qa-gateway-1 Running 
+ Container qa-mysql-user-1 Waiting 
+ Container qa-kafka-1 Waiting 
+ Container qa-eureka-1 Waiting 
+ Container qa-redis-1 Waiting 
+ Container qa-kafka-1 Waiting 
+ Container qa-eureka-1 Waiting 
+ Container qa-mysql-order-1 Waiting 
+ Container qa-redis-1 Healthy 
+ Container qa-kafka-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-mysql-order-1 Healthy 
+ Container qa-kafka-1 Healthy 
+ Container qa-mysql-user-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-eureka-1 Waiting 
+ Container qa-eureka-1 Healthy 
+ Container qa-k6-run-963c3b87997b Creating 
+ Container qa-k6-run-963c3b87997b Created 
+
+          /\      |‾‾| /‾‾/   /‾‾/   
+     /\  /  \     |  |/  /   /  /    
+    /  \/    \    |     (   /   ‾‾\  
+   /          \   |  |\  \ |  (‾)  | 
+  / __________ \  |__| \__\ \_____/ .io
+
+     execution: local
+        script: /scripts/load-test.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 200 max VUs, 5m10s max duration (incl. graceful stop):
+              * order_creation: Up to 200 looping VUs for 5m0s over 4 stages (gracefulRampDown: 10s, gracefulStop: 30s)
+
+
+running (0m01.0s), 001/200 VUs, 0 complete and 0 interrupted iterations
+order_creation   [   0% ] 001/200 VUs  0m01.0s/5m00.0s
+
+running (0m02.0s), 003/200 VUs, 2 complete and 0 interrupted iterations
+order_creation   [   1% ] 003/200 VUs  0m02.0s/5m00.0s
+
+running (0m03.0s), 004/200 VUs, 16 complete and 0 interrupted iterations
+order_creation   [   1% ] 004/200 VUs  0m03.0s/5m00.0s
+
+running (0m04.0s), 006/200 VUs, 36 complete and 0 interrupted iterations
+order_creation   [   1% ] 006/200 VUs  0m04.0s/5m00.0s
+
+running (0m05.0s), 008/200 VUs, 56 complete and 0 interrupted iterations
+order_creation   [   2% ] 008/200 VUs  0m05.0s/5m00.0s
+
+running (0m06.0s), 009/200 VUs, 78 complete and 0 interrupted iterations
+order_creation   [   2% ] 009/200 VUs  0m06.0s/5m00.0s
+
+running (0m07.0s), 011/200 VUs, 98 complete and 0 interrupted iterations
+order_creation   [   2% ] 011/200 VUs  0m07.0s/5m00.0s
+
+running (0m08.0s), 013/200 VUs, 125 complete and 0 interrupted iterations
+order_creation   [   3% ] 013/200 VUs  0m08.0s/5m00.0s
+
+running (0m09.0s), 014/200 VUs, 152 complete and 0 interrupted iterations
+order_creation   [   3% ] 014/200 VUs  0m09.0s/5m00.0s
+
+running (0m10.0s), 016/200 VUs, 176 complete and 0 interrupted iterations
+order_creation   [   3% ] 016/200 VUs  0m10.0s/5m00.0s
+
+running (0m11.0s), 018/200 VUs, 201 complete and 0 interrupted iterations
+order_creation   [   4% ] 018/200 VUs  0m11.0s/5m00.0s
+
+running (0m12.0s), 019/200 VUs, 226 complete and 0 interrupted iterations
+order_creation   [   4% ] 019/200 VUs  0m12.0s/5m00.0s
+
+running (0m13.0s), 021/200 VUs, 255 complete and 0 interrupted iterations
+order_creation   [   4% ] 021/200 VUs  0m13.0s/5m00.0s
+
+running (0m14.0s), 023/200 VUs, 281 complete and 0 interrupted iterations
+order_creation   [   5% ] 023/200 VUs  0m14.0s/5m00.0s
+
+running (0m15.0s), 024/200 VUs, 304 complete and 0 interrupted iterations
+order_creation   [   5% ] 024/200 VUs  0m15.0s/5m00.0s
+
+running (0m16.0s), 026/200 VUs, 332 complete and 0 interrupted iterations
+order_creation   [   5% ] 026/200 VUs  0m16.0s/5m00.0s
+
+running (0m17.0s), 028/200 VUs, 358 complete and 0 interrupted iterations
+order_creation   [   6% ] 028/200 VUs  0m17.0s/5m00.0s
+
+running (0m18.0s), 029/200 VUs, 386 complete and 0 interrupted iterations
+order_creation   [   6% ] 029/200 VUs  0m18.0s/5m00.0s
+
+running (0m19.0s), 031/200 VUs, 413 complete and 0 interrupted iterations
+order_creation   [   6% ] 031/200 VUs  0m19.0s/5m00.0s
+
+running (0m20.0s), 033/200 VUs, 438 complete and 0 interrupted iterations
+order_creation   [   7% ] 033/200 VUs  0m20.0s/5m00.0s
+
+running (0m21.0s), 034/200 VUs, 465 complete and 0 interrupted iterations
+order_creation   [   7% ] 034/200 VUs  0m21.0s/5m00.0s
+
+running (0m22.0s), 036/200 VUs, 495 complete and 0 interrupted iterations
+order_creation   [   7% ] 036/200 VUs  0m22.0s/5m00.0s
+
+running (0m23.0s), 038/200 VUs, 524 complete and 0 interrupted iterations
+order_creation   [   8% ] 038/200 VUs  0m23.0s/5m00.0s
+
+running (0m24.0s), 039/200 VUs, 552 complete and 0 interrupted iterations
+order_creation   [   8% ] 039/200 VUs  0m24.0s/5m00.0s
+
+running (0m25.0s), 041/200 VUs, 578 complete and 0 interrupted iterations
+order_creation   [   8% ] 041/200 VUs  0m25.0s/5m00.0s
+
+running (0m26.0s), 043/200 VUs, 608 complete and 0 interrupted iterations
+order_creation   [   9% ] 043/200 VUs  0m26.0s/5m00.0s
+
+running (0m27.0s), 044/200 VUs, 638 complete and 0 interrupted iterations
+order_creation   [   9% ] 044/200 VUs  0m27.0s/5m00.0s
+
+running (0m28.0s), 046/200 VUs, 668 complete and 0 interrupted iterations
+order_creation   [   9% ] 046/200 VUs  0m28.0s/5m00.0s
+
+running (0m29.0s), 048/200 VUs, 697 complete and 0 interrupted iterations
+order_creation   [  10% ] 048/200 VUs  0m29.0s/5m00.0s
+
+running (0m30.0s), 049/200 VUs, 728 complete and 0 interrupted iterations
+order_creation   [  10% ] 049/200 VUs  0m30.0s/5m00.0s
+
+running (0m31.0s), 052/200 VUs, 756 complete and 0 interrupted iterations
+order_creation   [  10% ] 052/200 VUs  0m31.0s/5m00.0s
+
+running (0m32.0s), 054/200 VUs, 785 complete and 0 interrupted iterations
+order_creation   [  11% ] 054/200 VUs  0m32.0s/5m00.0s
+
+running (0m33.0s), 057/200 VUs, 814 complete and 0 interrupted iterations
+order_creation   [  11% ] 057/200 VUs  0m33.0s/5m00.0s
+
+running (0m34.0s), 059/200 VUs, 842 complete and 0 interrupted iterations
+order_creation   [  11% ] 059/200 VUs  0m34.0s/5m00.0s
+
+running (0m35.0s), 062/200 VUs, 870 complete and 0 interrupted iterations
+order_creation   [  12% ] 062/200 VUs  0m35.0s/5m00.0s
+
+running (0m36.0s), 064/200 VUs, 901 complete and 0 interrupted iterations
+order_creation   [  12% ] 064/200 VUs  0m36.0s/5m00.0s
+
+running (0m37.0s), 067/200 VUs, 930 complete and 0 interrupted iterations
+order_creation   [  12% ] 067/200 VUs  0m37.0s/5m00.0s
+
+running (0m38.0s), 069/200 VUs, 958 complete and 0 interrupted iterations
+order_creation   [  13% ] 069/200 VUs  0m38.0s/5m00.0s
+
+running (0m39.0s), 072/200 VUs, 989 complete and 0 interrupted iterations
+order_creation   [  13% ] 072/200 VUs  0m39.0s/5m00.0s
+
+running (0m40.0s), 074/200 VUs, 1022 complete and 0 interrupted iterations
+order_creation   [  13% ] 074/200 VUs  0m40.0s/5m00.0s
+
+running (0m41.0s), 077/200 VUs, 1052 complete and 0 interrupted iterations
+order_creation   [  14% ] 077/200 VUs  0m41.0s/5m00.0s
+
+running (0m42.0s), 079/200 VUs, 1083 complete and 0 interrupted iterations
+order_creation   [  14% ] 079/200 VUs  0m42.0s/5m00.0s
+
+running (0m43.0s), 082/200 VUs, 1114 complete and 0 interrupted iterations
+order_creation   [  14% ] 082/200 VUs  0m43.0s/5m00.0s
+
+running (0m44.0s), 084/200 VUs, 1143 complete and 0 interrupted iterations
+order_creation   [  15% ] 084/200 VUs  0m44.0s/5m00.0s
+
+running (0m45.0s), 087/200 VUs, 1174 complete and 0 interrupted iterations
+order_creation   [  15% ] 087/200 VUs  0m45.0s/5m00.0s
+
+running (0m46.0s), 089/200 VUs, 1204 complete and 0 interrupted iterations
+order_creation   [  15% ] 089/200 VUs  0m46.0s/5m00.0s
+
+running (0m47.0s), 092/200 VUs, 1234 complete and 0 interrupted iterations
+order_creation   [  16% ] 092/200 VUs  0m47.0s/5m00.0s
+
+running (0m48.0s), 094/200 VUs, 1265 complete and 0 interrupted iterations
+order_creation   [  16% ] 094/200 VUs  0m48.0s/5m00.0s
+
+running (0m49.0s), 097/200 VUs, 1295 complete and 0 interrupted iterations
+order_creation   [  16% ] 097/200 VUs  0m49.0s/5m00.0s
+
+running (0m50.0s), 099/200 VUs, 1325 complete and 0 interrupted iterations
+order_creation   [  17% ] 099/200 VUs  0m50.0s/5m00.0s
+
+running (0m51.0s), 102/200 VUs, 1353 complete and 0 interrupted iterations
+order_creation   [  17% ] 102/200 VUs  0m51.0s/5m00.0s
+
+running (0m52.0s), 104/200 VUs, 1386 complete and 0 interrupted iterations
+order_creation   [  17% ] 104/200 VUs  0m52.0s/5m00.0s
+
+running (0m53.0s), 107/200 VUs, 1415 complete and 0 interrupted iterations
+order_creation   [  18% ] 107/200 VUs  0m53.0s/5m00.0s
+
+running (0m54.0s), 109/200 VUs, 1443 complete and 0 interrupted iterations
+order_creation   [  18% ] 109/200 VUs  0m54.0s/5m00.0s
+
+running (0m55.0s), 112/200 VUs, 1473 complete and 0 interrupted iterations
+order_creation   [  18% ] 112/200 VUs  0m55.0s/5m00.0s
+
+running (0m56.0s), 114/200 VUs, 1503 complete and 0 interrupted iterations
+order_creation   [  19% ] 114/200 VUs  0m56.0s/5m00.0s
+
+running (0m57.0s), 117/200 VUs, 1533 complete and 0 interrupted iterations
+order_creation   [  19% ] 117/200 VUs  0m57.0s/5m00.0s
+
+running (0m58.0s), 119/200 VUs, 1564 complete and 0 interrupted iterations
+order_creation   [  19% ] 119/200 VUs  0m58.0s/5m00.0s
+
+running (0m59.0s), 122/200 VUs, 1595 complete and 0 interrupted iterations
+order_creation   [  20% ] 122/200 VUs  0m59.0s/5m00.0s
+
+running (1m00.0s), 124/200 VUs, 1623 complete and 0 interrupted iterations
+order_creation   [  20% ] 124/200 VUs  1m00.0s/5m00.0s
+
+running (1m01.0s), 127/200 VUs, 1652 complete and 0 interrupted iterations
+order_creation   [  20% ] 127/200 VUs  1m01.0s/5m00.0s
+
+running (1m02.0s), 129/200 VUs, 1682 complete and 0 interrupted iterations
+order_creation   [  21% ] 129/200 VUs  1m02.0s/5m00.0s
+
+running (1m03.0s), 132/200 VUs, 1713 complete and 0 interrupted iterations
+order_creation   [  21% ] 132/200 VUs  1m03.0s/5m00.0s
+
+running (1m04.0s), 134/200 VUs, 1741 complete and 0 interrupted iterations
+order_creation   [  21% ] 134/200 VUs  1m04.0s/5m00.0s
+
+running (1m05.0s), 137/200 VUs, 1771 complete and 0 interrupted iterations
+order_creation   [  22% ] 137/200 VUs  1m05.0s/5m00.0s
+
+running (1m06.0s), 139/200 VUs, 1800 complete and 0 interrupted iterations
+order_creation   [  22% ] 139/200 VUs  1m06.0s/5m00.0s
+
+running (1m07.0s), 142/200 VUs, 1826 complete and 0 interrupted iterations
+order_creation   [  22% ] 142/200 VUs  1m07.0s/5m00.0s
+
+running (1m08.0s), 144/200 VUs, 1855 complete and 0 interrupted iterations
+order_creation   [  23% ] 144/200 VUs  1m08.0s/5m00.0s
+
+running (1m09.0s), 147/200 VUs, 1886 complete and 0 interrupted iterations
+order_creation   [  23% ] 147/200 VUs  1m09.0s/5m00.0s
+
+running (1m10.0s), 149/200 VUs, 1915 complete and 0 interrupted iterations
+order_creation   [  23% ] 149/200 VUs  1m10.0s/5m00.0s
+
+running (1m11.0s), 152/200 VUs, 1942 complete and 0 interrupted iterations
+order_creation   [  24% ] 152/200 VUs  1m11.0s/5m00.0s
+
+running (1m12.0s), 154/200 VUs, 1970 complete and 0 interrupted iterations
+order_creation   [  24% ] 154/200 VUs  1m12.0s/5m00.0s
+
+running (1m13.0s), 157/200 VUs, 2000 complete and 0 interrupted iterations
+order_creation   [  24% ] 157/200 VUs  1m13.0s/5m00.0s
+
+running (1m14.0s), 159/200 VUs, 2031 complete and 0 interrupted iterations
+order_creation   [  25% ] 159/200 VUs  1m14.0s/5m00.0s
+
+running (1m15.0s), 162/200 VUs, 2058 complete and 0 interrupted iterations
+order_creation   [  25% ] 162/200 VUs  1m15.0s/5m00.0s
+
+running (1m16.0s), 164/200 VUs, 2087 complete and 0 interrupted iterations
+order_creation   [  25% ] 164/200 VUs  1m16.0s/5m00.0s
+
+running (1m17.0s), 167/200 VUs, 2115 complete and 0 interrupted iterations
+order_creation   [  26% ] 167/200 VUs  1m17.0s/5m00.0s
+
+running (1m18.0s), 169/200 VUs, 2147 complete and 0 interrupted iterations
+order_creation   [  26% ] 169/200 VUs  1m18.0s/5m00.0s
+
+running (1m19.0s), 172/200 VUs, 2176 complete and 0 interrupted iterations
+order_creation   [  26% ] 172/200 VUs  1m19.0s/5m00.0s
+
+running (1m20.0s), 174/200 VUs, 2207 complete and 0 interrupted iterations
+order_creation   [  27% ] 174/200 VUs  1m20.0s/5m00.0s
+
+running (1m21.0s), 177/200 VUs, 2233 complete and 0 interrupted iterations
+order_creation   [  27% ] 177/200 VUs  1m21.0s/5m00.0s
+
+running (1m22.0s), 179/200 VUs, 2264 complete and 0 interrupted iterations
+order_creation   [  27% ] 179/200 VUs  1m22.0s/5m00.0s
+
+running (1m23.0s), 182/200 VUs, 2293 complete and 0 interrupted iterations
+order_creation   [  28% ] 182/200 VUs  1m23.0s/5m00.0s
+
+running (1m24.0s), 184/200 VUs, 2322 complete and 0 interrupted iterations
+order_creation   [  28% ] 184/200 VUs  1m24.0s/5m00.0s
+
+running (1m25.0s), 187/200 VUs, 2352 complete and 0 interrupted iterations
+order_creation   [  28% ] 187/200 VUs  1m25.0s/5m00.0s
+
+running (1m26.0s), 189/200 VUs, 2382 complete and 0 interrupted iterations
+order_creation   [  29% ] 189/200 VUs  1m26.0s/5m00.0s
+
+running (1m27.0s), 192/200 VUs, 2411 complete and 0 interrupted iterations
+order_creation   [  29% ] 192/200 VUs  1m27.0s/5m00.0s
+
+running (1m28.0s), 194/200 VUs, 2443 complete and 0 interrupted iterations
+order_creation   [  29% ] 194/200 VUs  1m28.0s/5m00.0s
+
+running (1m29.0s), 197/200 VUs, 2471 complete and 0 interrupted iterations
+order_creation   [  30% ] 197/200 VUs  1m29.0s/5m00.0s
+
+running (1m30.0s), 199/200 VUs, 2499 complete and 0 interrupted iterations
+order_creation   [  30% ] 199/200 VUs  1m30.0s/5m00.0s
+
+running (1m31.0s), 200/200 VUs, 2532 complete and 0 interrupted iterations
+order_creation   [  30% ] 200/200 VUs  1m31.0s/5m00.0s
+
+running (1m32.0s), 200/200 VUs, 2562 complete and 0 interrupted iterations
+order_creation   [  31% ] 200/200 VUs  1m32.0s/5m00.0s
+
+running (1m33.0s), 200/200 VUs, 2590 complete and 0 interrupted iterations
+order_creation   [  31% ] 200/200 VUs  1m33.0s/5m00.0s
+
+running (1m34.0s), 200/200 VUs, 2619 complete and 0 interrupted iterations
+order_creation   [  31% ] 200/200 VUs  1m34.0s/5m00.0s
+
+running (1m35.0s), 200/200 VUs, 2648 complete and 0 interrupted iterations
+order_creation   [  32% ] 200/200 VUs  1m35.0s/5m00.0s
+
+running (1m36.0s), 200/200 VUs, 2675 complete and 0 interrupted iterations
+order_creation   [  32% ] 200/200 VUs  1m36.0s/5m00.0s
+
+running (1m37.0s), 200/200 VUs, 2704 complete and 0 interrupted iterations
+order_creation   [  32% ] 200/200 VUs  1m37.0s/5m00.0s
+
+running (1m38.0s), 200/200 VUs, 2733 complete and 0 interrupted iterations
+order_creation   [  33% ] 200/200 VUs  1m38.0s/5m00.0s
+
+running (1m39.0s), 200/200 VUs, 2762 complete and 0 interrupted iterations
+order_creation   [  33% ] 200/200 VUs  1m39.0s/5m00.0s
+
+running (1m40.0s), 200/200 VUs, 2790 complete and 0 interrupted iterations
+order_creation   [  33% ] 200/200 VUs  1m40.0s/5m00.0s
+
+running (1m41.0s), 200/200 VUs, 2818 complete and 0 interrupted iterations
+order_creation   [  34% ] 200/200 VUs  1m41.0s/5m00.0s
+
+running (1m42.0s), 200/200 VUs, 2848 complete and 0 interrupted iterations
+order_creation   [  34% ] 200/200 VUs  1m42.0s/5m00.0s
+
+running (1m43.0s), 200/200 VUs, 2878 complete and 0 interrupted iterations
+order_creation   [  34% ] 200/200 VUs  1m43.0s/5m00.0s
+
+running (1m44.0s), 200/200 VUs, 2908 complete and 0 interrupted iterations
+order_creation   [  35% ] 200/200 VUs  1m44.0s/5m00.0s
+
+running (1m45.0s), 200/200 VUs, 2937 complete and 0 interrupted iterations
+order_creation   [  35% ] 200/200 VUs  1m45.0s/5m00.0s
+
+running (1m46.0s), 200/200 VUs, 2969 complete and 0 interrupted iterations
+order_creation   [  35% ] 200/200 VUs  1m46.0s/5m00.0s
+
+running (1m47.0s), 200/200 VUs, 3000 complete and 0 interrupted iterations
+order_creation   [  36% ] 200/200 VUs  1m47.0s/5m00.0s
+
+running (1m48.0s), 200/200 VUs, 3032 complete and 0 interrupted iterations
+order_creation   [  36% ] 200/200 VUs  1m48.0s/5m00.0s
+
+running (1m49.0s), 200/200 VUs, 3062 complete and 0 interrupted iterations
+order_creation   [  36% ] 200/200 VUs  1m49.0s/5m00.0s
+
+running (1m50.0s), 200/200 VUs, 3088 complete and 0 interrupted iterations
+order_creation   [  37% ] 200/200 VUs  1m50.0s/5m00.0s
+
+running (1m51.0s), 200/200 VUs, 3120 complete and 0 interrupted iterations
+order_creation   [  37% ] 200/200 VUs  1m51.0s/5m00.0s
+
+running (1m52.0s), 200/200 VUs, 3151 complete and 0 interrupted iterations
+order_creation   [  37% ] 200/200 VUs  1m52.0s/5m00.0s
+
+running (1m53.0s), 200/200 VUs, 3182 complete and 0 interrupted iterations
+order_creation   [  38% ] 200/200 VUs  1m53.0s/5m00.0s
+
+running (1m54.0s), 200/200 VUs, 3214 complete and 0 interrupted iterations
+order_creation   [  38% ] 200/200 VUs  1m54.0s/5m00.0s
+
+running (1m55.0s), 200/200 VUs, 3245 complete and 0 interrupted iterations
+order_creation   [  38% ] 200/200 VUs  1m55.0s/5m00.0s
+
+running (1m56.0s), 200/200 VUs, 3275 complete and 0 interrupted iterations
+order_creation   [  39% ] 200/200 VUs  1m56.0s/5m00.0s
+
+running (1m57.0s), 200/200 VUs, 3301 complete and 0 interrupted iterations
+order_creation   [  39% ] 200/200 VUs  1m57.0s/5m00.0s
+
+running (1m58.0s), 200/200 VUs, 3330 complete and 0 interrupted iterations
+order_creation   [  39% ] 200/200 VUs  1m58.0s/5m00.0s
+
+running (1m59.0s), 200/200 VUs, 3363 complete and 0 interrupted iterations
+order_creation   [  40% ] 200/200 VUs  1m59.0s/5m00.0s
+
+running (2m00.0s), 200/200 VUs, 3392 complete and 0 interrupted iterations
+order_creation   [  40% ] 200/200 VUs  2m00.0s/5m00.0s
+
+running (2m01.0s), 200/200 VUs, 3422 complete and 0 interrupted iterations
+order_creation   [  40% ] 200/200 VUs  2m01.0s/5m00.0s
+
+running (2m02.0s), 200/200 VUs, 3452 complete and 0 interrupted iterations
+order_creation   [  41% ] 200/200 VUs  2m02.0s/5m00.0s
+
+running (2m03.0s), 200/200 VUs, 3481 complete and 0 interrupted iterations
+order_creation   [  41% ] 200/200 VUs  2m03.0s/5m00.0s
+
+running (2m04.0s), 200/200 VUs, 3511 complete and 0 interrupted iterations
+order_creation   [  41% ] 200/200 VUs  2m04.0s/5m00.0s
+
+running (2m05.0s), 200/200 VUs, 3540 complete and 0 interrupted iterations
+order_creation   [  42% ] 200/200 VUs  2m05.0s/5m00.0s
+
+running (2m06.0s), 200/200 VUs, 3571 complete and 0 interrupted iterations
+order_creation   [  42% ] 200/200 VUs  2m06.0s/5m00.0s
+
+running (2m07.0s), 200/200 VUs, 3601 complete and 0 interrupted iterations
+order_creation   [  42% ] 200/200 VUs  2m07.0s/5m00.0s
+
+running (2m08.0s), 200/200 VUs, 3631 complete and 0 interrupted iterations
+order_creation   [  43% ] 200/200 VUs  2m08.0s/5m00.0s
+
+running (2m09.0s), 200/200 VUs, 3664 complete and 0 interrupted iterations
+order_creation   [  43% ] 200/200 VUs  2m09.0s/5m00.0s
+
+running (2m10.0s), 200/200 VUs, 3693 complete and 0 interrupted iterations
+order_creation   [  43% ] 200/200 VUs  2m10.0s/5m00.0s
+
+running (2m11.0s), 200/200 VUs, 3725 complete and 0 interrupted iterations
+order_creation   [  44% ] 200/200 VUs  2m11.0s/5m00.0s
+
+running (2m12.0s), 200/200 VUs, 3757 complete and 0 interrupted iterations
+order_creation   [  44% ] 200/200 VUs  2m12.0s/5m00.0s
+
+running (2m13.0s), 200/200 VUs, 3788 complete and 0 interrupted iterations
+order_creation   [  44% ] 200/200 VUs  2m13.0s/5m00.0s
+
+running (2m14.0s), 200/200 VUs, 3819 complete and 0 interrupted iterations
+order_creation   [  45% ] 200/200 VUs  2m14.0s/5m00.0s
+
+running (2m15.0s), 200/200 VUs, 3849 complete and 0 interrupted iterations
+order_creation   [  45% ] 200/200 VUs  2m15.0s/5m00.0s
+
+running (2m16.0s), 200/200 VUs, 3882 complete and 0 interrupted iterations
+order_creation   [  45% ] 200/200 VUs  2m16.0s/5m00.0s
+
+running (2m17.0s), 200/200 VUs, 3912 complete and 0 interrupted iterations
+order_creation   [  46% ] 200/200 VUs  2m17.0s/5m00.0s
+
+running (2m18.0s), 200/200 VUs, 3943 complete and 0 interrupted iterations
+order_creation   [  46% ] 200/200 VUs  2m18.0s/5m00.0s
+
+running (2m19.0s), 200/200 VUs, 3976 complete and 0 interrupted iterations
+order_creation   [  46% ] 200/200 VUs  2m19.0s/5m00.0s
+
+running (2m20.0s), 200/200 VUs, 4007 complete and 0 interrupted iterations
+order_creation   [  47% ] 200/200 VUs  2m20.0s/5m00.0s
+
+running (2m21.0s), 200/200 VUs, 4039 complete and 0 interrupted iterations
+order_creation   [  47% ] 200/200 VUs  2m21.0s/5m00.0s
+
+running (2m22.0s), 200/200 VUs, 4070 complete and 0 interrupted iterations
+order_creation   [  47% ] 200/200 VUs  2m22.0s/5m00.0s
+
+running (2m23.0s), 200/200 VUs, 4102 complete and 0 interrupted iterations
+order_creation   [  48% ] 200/200 VUs  2m23.0s/5m00.0s
+
+running (2m24.0s), 200/200 VUs, 4135 complete and 0 interrupted iterations
+order_creation   [  48% ] 200/200 VUs  2m24.0s/5m00.0s
+
+running (2m25.0s), 200/200 VUs, 4165 complete and 0 interrupted iterations
+order_creation   [  48% ] 200/200 VUs  2m25.0s/5m00.0s
+
+running (2m26.0s), 200/200 VUs, 4195 complete and 0 interrupted iterations
+order_creation   [  49% ] 200/200 VUs  2m26.0s/5m00.0s
+
+running (2m27.0s), 200/200 VUs, 4226 complete and 0 interrupted iterations
+order_creation   [  49% ] 200/200 VUs  2m27.0s/5m00.0s
+
+running (2m28.0s), 200/200 VUs, 4256 complete and 0 interrupted iterations
+order_creation   [  49% ] 200/200 VUs  2m28.0s/5m00.0s
+
+running (2m29.0s), 200/200 VUs, 4287 complete and 0 interrupted iterations
+order_creation   [  50% ] 200/200 VUs  2m29.0s/5m00.0s
+
+running (2m30.0s), 200/200 VUs, 4320 complete and 0 interrupted iterations
+order_creation   [  50% ] 200/200 VUs  2m30.0s/5m00.0s
+
+running (2m31.0s), 200/200 VUs, 4355 complete and 0 interrupted iterations
+order_creation   [  50% ] 200/200 VUs  2m31.0s/5m00.0s
+
+running (2m32.0s), 200/200 VUs, 4385 complete and 0 interrupted iterations
+order_creation   [  51% ] 200/200 VUs  2m32.0s/5m00.0s
+
+running (2m33.0s), 200/200 VUs, 4415 complete and 0 interrupted iterations
+order_creation   [  51% ] 200/200 VUs  2m33.0s/5m00.0s
+
+running (2m34.0s), 200/200 VUs, 4451 complete and 0 interrupted iterations
+order_creation   [  51% ] 200/200 VUs  2m34.0s/5m00.0s
+
+running (2m35.0s), 200/200 VUs, 4481 complete and 0 interrupted iterations
+order_creation   [  52% ] 200/200 VUs  2m35.0s/5m00.0s
+
+running (2m36.0s), 200/200 VUs, 4511 complete and 0 interrupted iterations
+order_creation   [  52% ] 200/200 VUs  2m36.0s/5m00.0s
+
+running (2m37.0s), 200/200 VUs, 4542 complete and 0 interrupted iterations
+order_creation   [  52% ] 200/200 VUs  2m37.0s/5m00.0s
+
+running (2m38.0s), 200/200 VUs, 4571 complete and 0 interrupted iterations
+order_creation   [  53% ] 200/200 VUs  2m38.0s/5m00.0s
+
+running (2m39.0s), 200/200 VUs, 4602 complete and 0 interrupted iterations
+order_creation   [  53% ] 200/200 VUs  2m39.0s/5m00.0s
+
+running (2m40.0s), 200/200 VUs, 4632 complete and 0 interrupted iterations
+order_creation   [  53% ] 200/200 VUs  2m40.0s/5m00.0s
+
+running (2m41.0s), 200/200 VUs, 4665 complete and 0 interrupted iterations
+order_creation   [  54% ] 200/200 VUs  2m41.0s/5m00.0s
+
+running (2m42.0s), 200/200 VUs, 4698 complete and 0 interrupted iterations
+order_creation   [  54% ] 200/200 VUs  2m42.0s/5m00.0s
+
+running (2m43.0s), 200/200 VUs, 4725 complete and 0 interrupted iterations
+order_creation   [  54% ] 200/200 VUs  2m43.0s/5m00.0s
+
+running (2m44.0s), 200/200 VUs, 4753 complete and 0 interrupted iterations
+order_creation   [  55% ] 200/200 VUs  2m44.0s/5m00.0s
+
+running (2m45.0s), 200/200 VUs, 4785 complete and 0 interrupted iterations
+order_creation   [  55% ] 200/200 VUs  2m45.0s/5m00.0s
+
+running (2m46.0s), 200/200 VUs, 4816 complete and 0 interrupted iterations
+order_creation   [  55% ] 200/200 VUs  2m46.0s/5m00.0s
+
+running (2m47.0s), 200/200 VUs, 4844 complete and 0 interrupted iterations
+order_creation   [  56% ] 200/200 VUs  2m47.0s/5m00.0s
+
+running (2m48.0s), 200/200 VUs, 4875 complete and 0 interrupted iterations
+order_creation   [  56% ] 200/200 VUs  2m48.0s/5m00.0s
+
+running (2m49.0s), 200/200 VUs, 4905 complete and 0 interrupted iterations
+order_creation   [  56% ] 200/200 VUs  2m49.0s/5m00.0s
+
+running (2m50.0s), 200/200 VUs, 4932 complete and 0 interrupted iterations
+order_creation   [  57% ] 200/200 VUs  2m50.0s/5m00.0s
+
+running (2m51.0s), 200/200 VUs, 4962 complete and 0 interrupted iterations
+order_creation   [  57% ] 200/200 VUs  2m51.0s/5m00.0s
+
+running (2m52.0s), 200/200 VUs, 4993 complete and 0 interrupted iterations
+order_creation   [  57% ] 200/200 VUs  2m52.0s/5m00.0s
+
+running (2m53.0s), 200/200 VUs, 5023 complete and 0 interrupted iterations
+order_creation   [  58% ] 200/200 VUs  2m53.0s/5m00.0s
+
+running (2m54.0s), 200/200 VUs, 5052 complete and 0 interrupted iterations
+order_creation   [  58% ] 200/200 VUs  2m54.0s/5m00.0s
+
+running (2m55.0s), 200/200 VUs, 5083 complete and 0 interrupted iterations
+order_creation   [  58% ] 200/200 VUs  2m55.0s/5m00.0s
+
+running (2m56.0s), 200/200 VUs, 5112 complete and 0 interrupted iterations
+order_creation   [  59% ] 200/200 VUs  2m56.0s/5m00.0s
+
+running (2m57.0s), 200/200 VUs, 5141 complete and 0 interrupted iterations
+order_creation   [  59% ] 200/200 VUs  2m57.0s/5m00.0s
+
+running (2m58.0s), 200/200 VUs, 5172 complete and 0 interrupted iterations
+order_creation   [  59% ] 200/200 VUs  2m58.0s/5m00.0s
+
+running (2m59.0s), 200/200 VUs, 5200 complete and 0 interrupted iterations
+order_creation   [  60% ] 200/200 VUs  2m59.0s/5m00.0s
+
+running (3m00.0s), 200/200 VUs, 5231 complete and 0 interrupted iterations
+order_creation   [  60% ] 200/200 VUs  3m00.0s/5m00.0s
+
+running (3m01.0s), 200/200 VUs, 5261 complete and 0 interrupted iterations
+order_creation   [  60% ] 200/200 VUs  3m01.0s/5m00.0s
+
+running (3m02.0s), 200/200 VUs, 5289 complete and 0 interrupted iterations
+order_creation   [  61% ] 200/200 VUs  3m02.0s/5m00.0s
+
+running (3m03.0s), 200/200 VUs, 5317 complete and 0 interrupted iterations
+order_creation   [  61% ] 200/200 VUs  3m03.0s/5m00.0s
+
+running (3m04.0s), 200/200 VUs, 5346 complete and 0 interrupted iterations
+order_creation   [  61% ] 200/200 VUs  3m04.0s/5m00.0s
+
+running (3m05.0s), 200/200 VUs, 5379 complete and 0 interrupted iterations
+order_creation   [  62% ] 200/200 VUs  3m05.0s/5m00.0s
+
+running (3m06.0s), 200/200 VUs, 5407 complete and 0 interrupted iterations
+order_creation   [  62% ] 200/200 VUs  3m06.0s/5m00.0s
+
+running (3m07.0s), 200/200 VUs, 5440 complete and 0 interrupted iterations
+order_creation   [  62% ] 200/200 VUs  3m07.0s/5m00.0s
+
+running (3m08.0s), 200/200 VUs, 5469 complete and 0 interrupted iterations
+order_creation   [  63% ] 200/200 VUs  3m08.0s/5m00.0s
+
+running (3m09.0s), 200/200 VUs, 5502 complete and 0 interrupted iterations
+order_creation   [  63% ] 200/200 VUs  3m09.0s/5m00.0s
+
+running (3m10.0s), 200/200 VUs, 5530 complete and 0 interrupted iterations
+order_creation   [  63% ] 200/200 VUs  3m10.0s/5m00.0s
+
+running (3m11.0s), 200/200 VUs, 5559 complete and 0 interrupted iterations
+order_creation   [  64% ] 200/200 VUs  3m11.0s/5m00.0s
+
+running (3m12.0s), 200/200 VUs, 5590 complete and 0 interrupted iterations
+order_creation   [  64% ] 200/200 VUs  3m12.0s/5m00.0s
+
+running (3m13.0s), 200/200 VUs, 5618 complete and 0 interrupted iterations
+order_creation   [  64% ] 200/200 VUs  3m13.0s/5m00.0s
+
+running (3m14.0s), 200/200 VUs, 5648 complete and 0 interrupted iterations
+order_creation   [  65% ] 200/200 VUs  3m14.0s/5m00.0s
+
+running (3m15.0s), 200/200 VUs, 5672 complete and 0 interrupted iterations
+order_creation   [  65% ] 200/200 VUs  3m15.0s/5m00.0s
+
+running (3m16.0s), 200/200 VUs, 5704 complete and 0 interrupted iterations
+order_creation   [  65% ] 200/200 VUs  3m16.0s/5m00.0s
+
+running (3m17.0s), 200/200 VUs, 5732 complete and 0 interrupted iterations
+order_creation   [  66% ] 200/200 VUs  3m17.0s/5m00.0s
+
+running (3m18.0s), 200/200 VUs, 5761 complete and 0 interrupted iterations
+order_creation   [  66% ] 200/200 VUs  3m18.0s/5m00.0s
+
+running (3m19.0s), 200/200 VUs, 5790 complete and 0 interrupted iterations
+order_creation   [  66% ] 200/200 VUs  3m19.0s/5m00.0s
+
+running (3m20.0s), 200/200 VUs, 5821 complete and 0 interrupted iterations
+order_creation   [  67% ] 200/200 VUs  3m20.0s/5m00.0s
+
+running (3m21.0s), 200/200 VUs, 5852 complete and 0 interrupted iterations
+order_creation   [  67% ] 200/200 VUs  3m21.0s/5m00.0s
+
+running (3m22.0s), 200/200 VUs, 5889 complete and 0 interrupted iterations
+order_creation   [  67% ] 200/200 VUs  3m22.0s/5m00.0s
+
+running (3m23.0s), 200/200 VUs, 5918 complete and 0 interrupted iterations
+order_creation   [  68% ] 200/200 VUs  3m23.0s/5m00.0s
+
+running (3m24.0s), 200/200 VUs, 5951 complete and 0 interrupted iterations
+order_creation   [  68% ] 200/200 VUs  3m24.0s/5m00.0s
+
+running (3m25.0s), 200/200 VUs, 5979 complete and 0 interrupted iterations
+order_creation   [  68% ] 200/200 VUs  3m25.0s/5m00.0s
+
+running (3m26.0s), 200/200 VUs, 6010 complete and 0 interrupted iterations
+order_creation   [  69% ] 200/200 VUs  3m26.0s/5m00.0s
+
+running (3m27.0s), 200/200 VUs, 6045 complete and 0 interrupted iterations
+order_creation   [  69% ] 200/200 VUs  3m27.0s/5m00.0s
+
+running (3m28.0s), 200/200 VUs, 6075 complete and 0 interrupted iterations
+order_creation   [  69% ] 200/200 VUs  3m28.0s/5m00.0s
+
+running (3m29.0s), 200/200 VUs, 6106 complete and 0 interrupted iterations
+order_creation   [  70% ] 200/200 VUs  3m29.0s/5m00.0s
+
+running (3m30.0s), 200/200 VUs, 6139 complete and 0 interrupted iterations
+order_creation   [  70% ] 200/200 VUs  3m30.0s/5m00.0s
+
+running (3m31.0s), 200/200 VUs, 6169 complete and 0 interrupted iterations
+order_creation   [  70% ] 200/200 VUs  3m31.0s/5m00.0s
+
+running (3m32.0s), 200/200 VUs, 6198 complete and 0 interrupted iterations
+order_creation   [  71% ] 200/200 VUs  3m32.0s/5m00.0s
+
+running (3m33.0s), 200/200 VUs, 6232 complete and 0 interrupted iterations
+order_creation   [  71% ] 200/200 VUs  3m33.0s/5m00.0s
+
+running (3m34.0s), 200/200 VUs, 6264 complete and 0 interrupted iterations
+order_creation   [  71% ] 200/200 VUs  3m34.0s/5m00.0s
+
+running (3m35.0s), 200/200 VUs, 6293 complete and 0 interrupted iterations
+order_creation   [  72% ] 200/200 VUs  3m35.0s/5m00.0s
+
+running (3m36.0s), 200/200 VUs, 6324 complete and 0 interrupted iterations
+order_creation   [  72% ] 200/200 VUs  3m36.0s/5m00.0s
+
+running (3m37.0s), 200/200 VUs, 6352 complete and 0 interrupted iterations
+order_creation   [  72% ] 200/200 VUs  3m37.0s/5m00.0s
+
+running (3m38.0s), 200/200 VUs, 6382 complete and 0 interrupted iterations
+order_creation   [  73% ] 200/200 VUs  3m38.0s/5m00.0s
+
+running (3m39.0s), 200/200 VUs, 6416 complete and 0 interrupted iterations
+order_creation   [  73% ] 200/200 VUs  3m39.0s/5m00.0s
+
+running (3m40.0s), 200/200 VUs, 6446 complete and 0 interrupted iterations
+order_creation   [  73% ] 200/200 VUs  3m40.0s/5m00.0s
+
+running (3m41.0s), 200/200 VUs, 6478 complete and 0 interrupted iterations
+order_creation   [  74% ] 200/200 VUs  3m41.0s/5m00.0s
+
+running (3m42.0s), 200/200 VUs, 6512 complete and 0 interrupted iterations
+order_creation   [  74% ] 200/200 VUs  3m42.0s/5m00.0s
+
+running (3m43.0s), 200/200 VUs, 6546 complete and 0 interrupted iterations
+order_creation   [  74% ] 200/200 VUs  3m43.0s/5m00.0s
+
+running (3m44.0s), 200/200 VUs, 6578 complete and 0 interrupted iterations
+order_creation   [  75% ] 200/200 VUs  3m44.0s/5m00.0s
+
+running (3m45.0s), 200/200 VUs, 6607 complete and 0 interrupted iterations
+order_creation   [  75% ] 200/200 VUs  3m45.0s/5m00.0s
+
+running (3m46.0s), 200/200 VUs, 6637 complete and 0 interrupted iterations
+order_creation   [  75% ] 200/200 VUs  3m46.0s/5m00.0s
+
+running (3m47.0s), 200/200 VUs, 6668 complete and 0 interrupted iterations
+order_creation   [  76% ] 200/200 VUs  3m47.0s/5m00.0s
+
+running (3m48.0s), 200/200 VUs, 6697 complete and 0 interrupted iterations
+order_creation   [  76% ] 200/200 VUs  3m48.0s/5m00.0s
+
+running (3m49.0s), 200/200 VUs, 6728 complete and 0 interrupted iterations
+order_creation   [  76% ] 200/200 VUs  3m49.0s/5m00.0s
+
+running (3m50.0s), 200/200 VUs, 6759 complete and 0 interrupted iterations
+order_creation   [  77% ] 200/200 VUs  3m50.0s/5m00.0s
+
+running (3m51.0s), 200/200 VUs, 6792 complete and 0 interrupted iterations
+order_creation   [  77% ] 200/200 VUs  3m51.0s/5m00.0s
+
+running (3m52.0s), 200/200 VUs, 6823 complete and 0 interrupted iterations
+order_creation   [  77% ] 200/200 VUs  3m52.0s/5m00.0s
+
+running (3m53.0s), 200/200 VUs, 6851 complete and 0 interrupted iterations
+order_creation   [  78% ] 200/200 VUs  3m53.0s/5m00.0s
+
+running (3m54.0s), 200/200 VUs, 6886 complete and 0 interrupted iterations
+order_creation   [  78% ] 200/200 VUs  3m54.0s/5m00.0s
+
+running (3m55.0s), 200/200 VUs, 6917 complete and 0 interrupted iterations
+order_creation   [  78% ] 200/200 VUs  3m55.0s/5m00.0s
+
+running (3m56.0s), 200/200 VUs, 6949 complete and 0 interrupted iterations
+order_creation   [  79% ] 200/200 VUs  3m56.0s/5m00.0s
+
+running (3m57.0s), 200/200 VUs, 6979 complete and 0 interrupted iterations
+order_creation   [  79% ] 200/200 VUs  3m57.0s/5m00.0s
+
+running (3m58.0s), 200/200 VUs, 7011 complete and 0 interrupted iterations
+order_creation   [  79% ] 200/200 VUs  3m58.0s/5m00.0s
+
+running (3m59.0s), 200/200 VUs, 7044 complete and 0 interrupted iterations
+order_creation   [  80% ] 200/200 VUs  3m59.0s/5m00.0s
+
+running (4m00.0s), 200/200 VUs, 7079 complete and 0 interrupted iterations
+order_creation   [  80% ] 200/200 VUs  4m00.0s/5m00.0s
+
+running (4m01.0s), 200/200 VUs, 7113 complete and 0 interrupted iterations
+order_creation   [  80% ] 200/200 VUs  4m01.0s/5m00.0s
+
+running (4m02.0s), 200/200 VUs, 7140 complete and 0 interrupted iterations
+order_creation   [  81% ] 200/200 VUs  4m02.0s/5m00.0s
+
+running (4m03.0s), 200/200 VUs, 7172 complete and 0 interrupted iterations
+order_creation   [  81% ] 200/200 VUs  4m03.0s/5m00.0s
+
+running (4m04.0s), 200/200 VUs, 7206 complete and 0 interrupted iterations
+order_creation   [  81% ] 200/200 VUs  4m04.0s/5m00.0s
+
+running (4m05.0s), 200/200 VUs, 7232 complete and 0 interrupted iterations
+order_creation   [  82% ] 200/200 VUs  4m05.0s/5m00.0s
+
+running (4m06.0s), 200/200 VUs, 7266 complete and 0 interrupted iterations
+order_creation   [  82% ] 200/200 VUs  4m06.0s/5m00.0s
+
+running (4m07.0s), 200/200 VUs, 7296 complete and 0 interrupted iterations
+order_creation   [  82% ] 200/200 VUs  4m07.0s/5m00.0s
+
+running (4m08.0s), 200/200 VUs, 7328 complete and 0 interrupted iterations
+order_creation   [  83% ] 200/200 VUs  4m08.0s/5m00.0s
+
+running (4m09.0s), 200/200 VUs, 7362 complete and 0 interrupted iterations
+order_creation   [  83% ] 200/200 VUs  4m09.0s/5m00.0s
+
+running (4m10.0s), 200/200 VUs, 7394 complete and 0 interrupted iterations
+order_creation   [  83% ] 200/200 VUs  4m10.0s/5m00.0s
+
+running (4m11.0s), 200/200 VUs, 7422 complete and 0 interrupted iterations
+order_creation   [  84% ] 200/200 VUs  4m11.0s/5m00.0s
+
+running (4m12.0s), 200/200 VUs, 7454 complete and 0 interrupted iterations
+order_creation   [  84% ] 200/200 VUs  4m12.0s/5m00.0s
+
+running (4m13.0s), 200/200 VUs, 7487 complete and 0 interrupted iterations
+order_creation   [  84% ] 200/200 VUs  4m13.0s/5m00.0s
+
+running (4m14.0s), 200/200 VUs, 7520 complete and 0 interrupted iterations
+order_creation   [  85% ] 200/200 VUs  4m14.0s/5m00.0s
+
+running (4m15.0s), 200/200 VUs, 7548 complete and 0 interrupted iterations
+order_creation   [  85% ] 200/200 VUs  4m15.0s/5m00.0s
+
+running (4m16.0s), 200/200 VUs, 7582 complete and 0 interrupted iterations
+order_creation   [  85% ] 200/200 VUs  4m16.0s/5m00.0s
+
+running (4m17.0s), 200/200 VUs, 7612 complete and 0 interrupted iterations
+order_creation   [  86% ] 200/200 VUs  4m17.0s/5m00.0s
+
+running (4m18.0s), 200/200 VUs, 7644 complete and 0 interrupted iterations
+order_creation   [  86% ] 200/200 VUs  4m18.0s/5m00.0s
+
+running (4m19.0s), 200/200 VUs, 7678 complete and 0 interrupted iterations
+order_creation   [  86% ] 200/200 VUs  4m19.0s/5m00.0s
+
+running (4m20.0s), 200/200 VUs, 7711 complete and 0 interrupted iterations
+order_creation   [  87% ] 200/200 VUs  4m20.0s/5m00.0s
+
+running (4m21.0s), 200/200 VUs, 7742 complete and 0 interrupted iterations
+order_creation   [  87% ] 200/200 VUs  4m21.0s/5m00.0s
+
+running (4m22.0s), 200/200 VUs, 7773 complete and 0 interrupted iterations
+order_creation   [  87% ] 200/200 VUs  4m22.0s/5m00.0s
+
+running (4m23.0s), 200/200 VUs, 7805 complete and 0 interrupted iterations
+order_creation   [  88% ] 200/200 VUs  4m23.0s/5m00.0s
+
+running (4m24.0s), 200/200 VUs, 7841 complete and 0 interrupted iterations
+order_creation   [  88% ] 200/200 VUs  4m24.0s/5m00.0s
+
+running (4m25.0s), 200/200 VUs, 7873 complete and 0 interrupted iterations
+order_creation   [  88% ] 200/200 VUs  4m25.0s/5m00.0s
+
+running (4m26.0s), 200/200 VUs, 7904 complete and 0 interrupted iterations
+order_creation   [  89% ] 200/200 VUs  4m26.0s/5m00.0s
+
+running (4m27.0s), 200/200 VUs, 7939 complete and 0 interrupted iterations
+order_creation   [  89% ] 200/200 VUs  4m27.0s/5m00.0s
+
+running (4m28.0s), 200/200 VUs, 7972 complete and 0 interrupted iterations
+order_creation   [  89% ] 200/200 VUs  4m28.0s/5m00.0s
+
+running (4m29.0s), 200/200 VUs, 8003 complete and 0 interrupted iterations
+order_creation   [  90% ] 200/200 VUs  4m29.0s/5m00.0s
+
+running (4m30.0s), 200/200 VUs, 8035 complete and 0 interrupted iterations
+order_creation   [  90% ] 200/200 VUs  4m30.0s/5m00.0s
+
+running (4m31.0s), 199/200 VUs, 8070 complete and 0 interrupted iterations
+order_creation   [  90% ] 199/200 VUs  4m31.0s/5m00.0s
+
+running (4m32.0s), 199/200 VUs, 8103 complete and 0 interrupted iterations
+order_creation   [  91% ] 199/200 VUs  4m32.0s/5m00.0s
+
+running (4m33.0s), 195/200 VUs, 8135 complete and 0 interrupted iterations
+order_creation   [  91% ] 195/200 VUs  4m33.0s/5m00.0s
+
+running (4m34.0s), 192/200 VUs, 8168 complete and 0 interrupted iterations
+order_creation   [  91% ] 192/200 VUs  4m34.0s/5m00.0s
+
+running (4m35.0s), 189/200 VUs, 8198 complete and 0 interrupted iterations
+order_creation   [  92% ] 189/200 VUs  4m35.0s/5m00.0s
+
+running (4m36.0s), 182/200 VUs, 8232 complete and 0 interrupted iterations
+order_creation   [  92% ] 182/200 VUs  4m36.0s/5m00.0s
+
+running (4m37.0s), 176/200 VUs, 8264 complete and 0 interrupted iterations
+order_creation   [  92% ] 176/200 VUs  4m37.0s/5m00.0s
+
+running (4m38.0s), 168/200 VUs, 8295 complete and 0 interrupted iterations
+order_creation   [  93% ] 168/200 VUs  4m38.0s/5m00.0s
+
+running (4m39.0s), 163/200 VUs, 8328 complete and 0 interrupted iterations
+order_creation   [  93% ] 163/200 VUs  4m39.0s/5m00.0s
+
+running (4m40.0s), 157/200 VUs, 8360 complete and 0 interrupted iterations
+order_creation   [  93% ] 157/200 VUs  4m40.0s/5m00.0s
+
+running (4m41.0s), 145/200 VUs, 8394 complete and 0 interrupted iterations
+order_creation   [  94% ] 145/200 VUs  4m41.0s/5m00.0s
+
+running (4m42.0s), 137/200 VUs, 8428 complete and 0 interrupted iterations
+order_creation   [  94% ] 137/200 VUs  4m42.0s/5m00.0s
+
+running (4m43.0s), 129/200 VUs, 8462 complete and 0 interrupted iterations
+order_creation   [  94% ] 129/200 VUs  4m43.0s/5m00.0s
+
+running (4m44.0s), 122/200 VUs, 8496 complete and 0 interrupted iterations
+order_creation   [  95% ] 122/200 VUs  4m44.0s/5m00.0s
+
+running (4m45.0s), 118/200 VUs, 8527 complete and 0 interrupted iterations
+order_creation   [  95% ] 118/200 VUs  4m45.0s/5m00.0s
+
+running (4m46.0s), 113/200 VUs, 8559 complete and 0 interrupted iterations
+order_creation   [  95% ] 113/200 VUs  4m46.0s/5m00.0s
+
+running (4m47.0s), 103/200 VUs, 8590 complete and 0 interrupted iterations
+order_creation   [  96% ] 103/200 VUs  4m47.0s/5m00.0s
+
+running (4m48.0s), 094/200 VUs, 8625 complete and 0 interrupted iterations
+order_creation   [  96% ] 094/200 VUs  4m48.0s/5m00.0s
+
+running (4m49.0s), 083/200 VUs, 8658 complete and 0 interrupted iterations
+order_creation   [  96% ] 083/200 VUs  4m49.0s/5m00.0s
+
+running (4m50.0s), 076/200 VUs, 8690 complete and 0 interrupted iterations
+order_creation   [  97% ] 076/200 VUs  4m50.0s/5m00.0s
+
+running (4m51.0s), 068/200 VUs, 8722 complete and 0 interrupted iterations
+order_creation   [  97% ] 068/200 VUs  4m51.0s/5m00.0s
+
+running (4m52.0s), 063/200 VUs, 8755 complete and 0 interrupted iterations
+order_creation   [  97% ] 063/200 VUs  4m52.0s/5m00.0s
+
+running (4m53.0s), 054/200 VUs, 8788 complete and 0 interrupted iterations
+order_creation   [  98% ] 054/200 VUs  4m53.0s/5m00.0s
+
+running (4m54.0s), 046/200 VUs, 8820 complete and 0 interrupted iterations
+order_creation   [  98% ] 046/200 VUs  4m54.0s/5m00.0s
+
+running (4m55.0s), 035/200 VUs, 8853 complete and 0 interrupted iterations
+order_creation   [  98% ] 035/200 VUs  4m55.0s/5m00.0s
+
+running (4m56.0s), 031/200 VUs, 8886 complete and 0 interrupted iterations
+order_creation   [  99% ] 031/200 VUs  4m56.0s/5m00.0s
+
+running (4m57.0s), 023/200 VUs, 8919 complete and 0 interrupted iterations
+order_creation   [  99% ] 023/200 VUs  4m57.0s/5m00.0s
+
+running (4m58.0s), 017/200 VUs, 8954 complete and 0 interrupted iterations
+order_creation   [  99% ] 017/200 VUs  4m58.0s/5m00.0s
+
+running (4m59.0s), 009/200 VUs, 8987 complete and 0 interrupted iterations
+order_creation   [ 100% ] 009/200 VUs  4m59.0s/5m00.0s
+
+running (5m00.0s), 002/200 VUs, 9013 complete and 0 interrupted iterations
+order_creation   [ 100% ] 002/200 VUs  5m00.0s/5m00.0s
+
+=== ADR-005 시나리오 3 측정 결과 (E1) ===
+
+order_create p50:  n/a ms
+order_create p95:  29.2 ms
+order_create p99:  n/a ms
+order_create fail rate: 0.12%
+총 요청: 27252, throughput: 90.8 req/s
+
+running (5m00.1s), 000/200 VUs, 9015 complete and 0 interrupted iterations
+order_creation ✓ [ 100% ] 000/200 VUs  5m0s
+[E1] Outbox / SAGA 정착 대기 (60s) ...
+[E1] 결과 수집 ...
+[E1] 완료 ✓
+
+=================================================================
+ 실험 E2 : orderApi 인스턴스 2 개
+=================================================================
+ Volume qa_mysql-order-qa-data Removed 
+ Volume qa_mysql-user-qa-data Removed 
+ Network qa_commerce-qa Removed 
+[E2] 스택 기동 (--scale orderapi=2) ...
+ Network qa_commerce-qa Creating 
+ Network qa_commerce-qa Created 
+ Volume qa_mysql-user-qa-data Creating 
+ Volume qa_mysql-user-qa-data Created 
+ Volume qa_mysql-order-qa-data Creating 
+ Volume qa_mysql-order-qa-data Created 
+ Container qa-eureka-1 Creating 
+ Container qa-mysql-user-1 Creating 
+ Container qa-kafka-1 Creating 
+ Container qa-mysql-order-1 Creating 
+ Container qa-redis-1 Creating 
+ Container qa-kafka-1 Created 
+ Container qa-eureka-1 Created 
+ Container qa-mysql-user-1 Created 
+ Container qa-userapi-1 Creating 
+ Container qa-mysql-order-1 Created 
+ Container qa-redis-1 Created 
+ Container qa-orderapi-2 Creating 
+ Container qa-orderapi-1 Creating 
+ Container qa-userapi-1 Created 
+ Container qa-orderapi-2 Created 
+ Container qa-orderapi-1 Created 
+ Container qa-gateway-1 Creating 
+ Container qa-gateway-1 Created 
+ Container qa-mysql-user-1 Starting 
+ Container qa-mysql-order-1 Starting 
+ Container qa-redis-1 Starting 
+ Container qa-eureka-1 Starting 
+ Container qa-kafka-1 Starting 
+ Container qa-mysql-order-1 Started 
+ Container qa-mysql-user-1 Started 
+ Container qa-eureka-1 Started 
+ Container qa-redis-1 Started 
+ Container qa-kafka-1 Started 
+ Container qa-eureka-1 Waiting 
+ Container qa-mysql-user-1 Waiting 
+ Container qa-kafka-1 Waiting 
+ Container qa-kafka-1 Waiting 
+ Container qa-eureka-1 Waiting 
+ Container qa-mysql-order-1 Waiting 
+ Container qa-redis-1 Waiting 
+ Container qa-redis-1 Healthy 
+ Container qa-kafka-1 Healthy 
+ Container qa-kafka-1 Healthy 
+ Container qa-mysql-user-1 Healthy 
+ Container qa-mysql-order-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-userapi-1 Starting 
+ Container qa-orderapi-1 Starting 
+ Container qa-userapi-1 Started 
+ Container qa-orderapi-1 Started 
+ Container qa-orderapi-2 Starting 
+ Container qa-orderapi-2 Started 
+ Container qa-eureka-1 Waiting 
+ Container qa-eureka-1 Healthy 
+ Container qa-gateway-1 Starting 
+ Container qa-gateway-1 Started 
+[E2] 서비스 ready 대기 ...
+[E2] 시드 SQL 실행 ...
+mysql: [Warning] Using a password on the command line interface can be insecure.
+table_name	cnt
+customers	1000
+customer_roles	1000
+sellers	1
+mysql: [Warning] Using a password on the command line interface can be insecure.
+table_name	cnt
+products	100
+product_items	500
+[E2] k6 부하 테스트 시작 ...
+ Container qa-redis-1 Running 
+ Container qa-mysql-order-1 Running 
+ Container qa-mysql-user-1 Running 
+ Container qa-eureka-1 Running 
+ Container qa-kafka-1 Running 
+ Container qa-orderapi-1 Running 
+ Container qa-orderapi-2 Stopping 
+ Container qa-userapi-1 Running 
+ Container qa-orderapi-2 Stopped 
+ Container qa-orderapi-2 Removing 
+ Container qa-orderapi-2 Removed 
+ Container qa-gateway-1 Running 
+ Container qa-kafka-1 Waiting 
+ Container qa-eureka-1 Waiting 
+ Container qa-mysql-user-1 Waiting 
+ Container qa-mysql-order-1 Waiting 
+ Container qa-redis-1 Waiting 
+ Container qa-kafka-1 Waiting 
+ Container qa-eureka-1 Waiting 
+ Container qa-kafka-1 Healthy 
+ Container qa-kafka-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-mysql-order-1 Healthy 
+ Container qa-mysql-user-1 Healthy 
+ Container qa-redis-1 Healthy 
+ Container qa-eureka-1 Healthy 
+ Container qa-eureka-1 Waiting 
+ Container qa-eureka-1 Healthy 
+ Container qa-k6-run-ce3e0e8f0ea5 Creating 
+ Container qa-k6-run-ce3e0e8f0ea5 Created 
+
+          /\      |‾‾| /‾‾/   /‾‾/   
+     /\  /  \     |  |/  /   /  /    
+    /  \/    \    |     (   /   ‾‾\  
+   /          \   |  |\  \ |  (‾)  | 
+  / __________ \  |__| \__\ \_____/ .io
+
+     execution: local
+        script: /scripts/load-test.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 200 max VUs, 5m10s max duration (incl. graceful stop):
+              * order_creation: Up to 200 looping VUs for 5m0s over 4 stages (gracefulRampDown: 10s, gracefulStop: 30s)
+
+
+running (0m01.0s), 001/200 VUs, 0 complete and 0 interrupted iterations
+order_creation   [   0% ] 001/200 VUs  0m01.0s/5m00.0s
+
+running (0m02.0s), 003/200 VUs, 2 complete and 0 interrupted iterations
+order_creation   [   1% ] 003/200 VUs  0m02.0s/5m00.0s
+
+running (0m03.0s), 004/200 VUs, 9 complete and 0 interrupted iterations
+order_creation   [   1% ] 004/200 VUs  0m03.0s/5m00.0s
+
+running (0m04.0s), 006/200 VUs, 27 complete and 0 interrupted iterations
+order_creation   [   1% ] 006/200 VUs  0m04.0s/5m00.0s
+
+running (0m05.0s), 008/200 VUs, 51 complete and 0 interrupted iterations
+order_creation   [   2% ] 008/200 VUs  0m05.0s/5m00.0s
+
+running (0m06.0s), 009/200 VUs, 74 complete and 0 interrupted iterations
+order_creation   [   2% ] 009/200 VUs  0m06.0s/5m00.0s
+
+running (0m07.0s), 011/200 VUs, 98 complete and 0 interrupted iterations
+order_creation   [   2% ] 011/200 VUs  0m07.0s/5m00.0s
+
+running (0m08.0s), 013/200 VUs, 122 complete and 0 interrupted iterations
+order_creation   [   3% ] 013/200 VUs  0m08.0s/5m00.0s
+
+running (0m09.0s), 014/200 VUs, 148 complete and 0 interrupted iterations
+order_creation   [   3% ] 014/200 VUs  0m09.0s/5m00.0s
+
+running (0m10.0s), 016/200 VUs, 174 complete and 0 interrupted iterations
+order_creation   [   3% ] 016/200 VUs  0m10.0s/5m00.0s
+
+running (0m11.0s), 018/200 VUs, 200 complete and 0 interrupted iterations
+order_creation   [   4% ] 018/200 VUs  0m11.0s/5m00.0s
+
+running (0m12.0s), 019/200 VUs, 227 complete and 0 interrupted iterations
+order_creation   [   4% ] 019/200 VUs  0m12.0s/5m00.0s
+
+running (0m13.0s), 021/200 VUs, 253 complete and 0 interrupted iterations
+order_creation   [   4% ] 021/200 VUs  0m13.0s/5m00.0s
+
+running (0m14.0s), 023/200 VUs, 278 complete and 0 interrupted iterations
+order_creation   [   5% ] 023/200 VUs  0m14.0s/5m00.0s
+
+running (0m15.0s), 024/200 VUs, 304 complete and 0 interrupted iterations
+order_creation   [   5% ] 024/200 VUs  0m15.0s/5m00.0s
+
+running (0m16.0s), 026/200 VUs, 331 complete and 0 interrupted iterations
+order_creation   [   5% ] 026/200 VUs  0m16.0s/5m00.0s
+
+running (0m17.0s), 028/200 VUs, 357 complete and 0 interrupted iterations
+order_creation   [   6% ] 028/200 VUs  0m17.0s/5m00.0s
+
+running (0m18.0s), 029/200 VUs, 383 complete and 0 interrupted iterations
+order_creation   [   6% ] 029/200 VUs  0m18.0s/5m00.0s
+
+running (0m19.0s), 031/200 VUs, 412 complete and 0 interrupted iterations
+order_creation   [   6% ] 031/200 VUs  0m19.0s/5m00.0s
+
+running (0m20.0s), 033/200 VUs, 437 complete and 0 interrupted iterations
+order_creation   [   7% ] 033/200 VUs  0m20.0s/5m00.0s
+
+running (0m21.0s), 034/200 VUs, 465 complete and 0 interrupted iterations
+order_creation   [   7% ] 034/200 VUs  0m21.0s/5m00.0s
+
+running (0m22.0s), 036/200 VUs, 496 complete and 0 interrupted iterations
+order_creation   [   7% ] 036/200 VUs  0m22.0s/5m00.0s
+
+running (0m23.0s), 038/200 VUs, 524 complete and 0 interrupted iterations
+order_creation   [   8% ] 038/200 VUs  0m23.0s/5m00.0s
+
+running (0m24.0s), 039/200 VUs, 549 complete and 0 interrupted iterations
+order_creation   [   8% ] 039/200 VUs  0m24.0s/5m00.0s
+
+running (0m25.0s), 041/200 VUs, 581 complete and 0 interrupted iterations
+order_creation   [   8% ] 041/200 VUs  0m25.0s/5m00.0s
+
+running (0m26.0s), 043/200 VUs, 609 complete and 0 interrupted iterations
+order_creation   [   9% ] 043/200 VUs  0m26.0s/5m00.0s
+
+running (0m27.0s), 044/200 VUs, 638 complete and 0 interrupted iterations
+order_creation   [   9% ] 044/200 VUs  0m27.0s/5m00.0s
+
+running (0m28.0s), 046/200 VUs, 669 complete and 0 interrupted iterations
+order_creation   [   9% ] 046/200 VUs  0m28.0s/5m00.0s
+
+running (0m29.0s), 048/200 VUs, 696 complete and 0 interrupted iterations
+order_creation   [  10% ] 048/200 VUs  0m29.0s/5m00.0s
+
+running (0m30.0s), 049/200 VUs, 728 complete and 0 interrupted iterations
+order_creation   [  10% ] 049/200 VUs  0m30.0s/5m00.0s
+
+running (0m31.0s), 052/200 VUs, 757 complete and 0 interrupted iterations
+order_creation   [  10% ] 052/200 VUs  0m31.0s/5m00.0s
+
+running (0m32.0s), 054/200 VUs, 786 complete and 0 interrupted iterations
+order_creation   [  11% ] 054/200 VUs  0m32.0s/5m00.0s
+
+running (0m33.0s), 057/200 VUs, 815 complete and 0 interrupted iterations
+order_creation   [  11% ] 057/200 VUs  0m33.0s/5m00.0s
+
+running (0m34.0s), 059/200 VUs, 844 complete and 0 interrupted iterations
+order_creation   [  11% ] 059/200 VUs  0m34.0s/5m00.0s
+
+running (0m35.0s), 062/200 VUs, 877 complete and 0 interrupted iterations
+order_creation   [  12% ] 062/200 VUs  0m35.0s/5m00.0s
+
+running (0m36.0s), 064/200 VUs, 907 complete and 0 interrupted iterations
+order_creation   [  12% ] 064/200 VUs  0m36.0s/5m00.0s
+
+running (0m37.0s), 067/200 VUs, 940 complete and 0 interrupted iterations
+order_creation   [  12% ] 067/200 VUs  0m37.0s/5m00.0s
+
+running (0m38.0s), 069/200 VUs, 970 complete and 0 interrupted iterations
+order_creation   [  13% ] 069/200 VUs  0m38.0s/5m00.0s
+
+running (0m39.0s), 072/200 VUs, 998 complete and 0 interrupted iterations
+order_creation   [  13% ] 072/200 VUs  0m39.0s/5m00.0s
+
+running (0m40.0s), 074/200 VUs, 1028 complete and 0 interrupted iterations
+order_creation   [  13% ] 074/200 VUs  0m40.0s/5m00.0s
+
+running (0m41.0s), 077/200 VUs, 1059 complete and 0 interrupted iterations
+order_creation   [  14% ] 077/200 VUs  0m41.0s/5m00.0s
+
+running (0m42.0s), 079/200 VUs, 1088 complete and 0 interrupted iterations
+order_creation   [  14% ] 079/200 VUs  0m42.0s/5m00.0s
+
+running (0m43.0s), 082/200 VUs, 1118 complete and 0 interrupted iterations
+order_creation   [  14% ] 082/200 VUs  0m43.0s/5m00.0s
+
+running (0m44.0s), 084/200 VUs, 1148 complete and 0 interrupted iterations
+order_creation   [  15% ] 084/200 VUs  0m44.0s/5m00.0s
+
+running (0m45.0s), 087/200 VUs, 1179 complete and 0 interrupted iterations
+order_creation   [  15% ] 087/200 VUs  0m45.0s/5m00.0s
+
+running (0m46.0s), 089/200 VUs, 1209 complete and 0 interrupted iterations
+order_creation   [  15% ] 089/200 VUs  0m46.0s/5m00.0s
+
+running (0m47.0s), 092/200 VUs, 1241 complete and 0 interrupted iterations
+order_creation   [  16% ] 092/200 VUs  0m47.0s/5m00.0s
+
+running (0m48.0s), 094/200 VUs, 1272 complete and 0 interrupted iterations
+order_creation   [  16% ] 094/200 VUs  0m48.0s/5m00.0s
+
+running (0m49.0s), 097/200 VUs, 1302 complete and 0 interrupted iterations
+order_creation   [  16% ] 097/200 VUs  0m49.0s/5m00.0s
+
+running (0m50.0s), 099/200 VUs, 1335 complete and 0 interrupted iterations
+order_creation   [  17% ] 099/200 VUs  0m50.0s/5m00.0s
+
+running (0m51.0s), 102/200 VUs, 1362 complete and 0 interrupted iterations
+order_creation   [  17% ] 102/200 VUs  0m51.0s/5m00.0s
+
+running (0m52.0s), 104/200 VUs, 1394 complete and 0 interrupted iterations
+order_creation   [  17% ] 104/200 VUs  0m52.0s/5m00.0s
+
+running (0m53.0s), 107/200 VUs, 1422 complete and 0 interrupted iterations
+order_creation   [  18% ] 107/200 VUs  0m53.0s/5m00.0s
+
+running (0m54.0s), 109/200 VUs, 1451 complete and 0 interrupted iterations
+order_creation   [  18% ] 109/200 VUs  0m54.0s/5m00.0s
+
+running (0m55.0s), 112/200 VUs, 1481 complete and 0 interrupted iterations
+order_creation   [  18% ] 112/200 VUs  0m55.0s/5m00.0s
+
+running (0m56.0s), 114/200 VUs, 1513 complete and 0 interrupted iterations
+order_creation   [  19% ] 114/200 VUs  0m56.0s/5m00.0s
+
+running (0m57.0s), 117/200 VUs, 1543 complete and 0 interrupted iterations
+order_creation   [  19% ] 117/200 VUs  0m57.0s/5m00.0s
+
+running (0m58.0s), 119/200 VUs, 1573 complete and 0 interrupted iterations
+order_creation   [  19% ] 119/200 VUs  0m58.0s/5m00.0s
+
+running (0m59.0s), 122/200 VUs, 1604 complete and 0 interrupted iterations
+order_creation   [  20% ] 122/200 VUs  0m59.0s/5m00.0s
+
+running (1m00.0s), 124/200 VUs, 1632 complete and 0 interrupted iterations
+order_creation   [  20% ] 124/200 VUs  1m00.0s/5m00.0s
+
+running (1m01.0s), 127/200 VUs, 1664 complete and 0 interrupted iterations
+order_creation   [  20% ] 127/200 VUs  1m01.0s/5m00.0s
+
+running (1m02.0s), 129/200 VUs, 1689 complete and 0 interrupted iterations
+order_creation   [  21% ] 129/200 VUs  1m02.0s/5m00.0s
+
+running (1m03.0s), 132/200 VUs, 1718 complete and 0 interrupted iterations
+order_creation   [  21% ] 132/200 VUs  1m03.0s/5m00.0s
+
+running (1m04.0s), 134/200 VUs, 1748 complete and 0 interrupted iterations
+order_creation   [  21% ] 134/200 VUs  1m04.0s/5m00.0s
+
+running (1m05.0s), 137/200 VUs, 1777 complete and 0 interrupted iterations
+order_creation   [  22% ] 137/200 VUs  1m05.0s/5m00.0s
+
+running (1m06.0s), 139/200 VUs, 1807 complete and 0 interrupted iterations
+order_creation   [  22% ] 139/200 VUs  1m06.0s/5m00.0s
+
+running (1m07.0s), 142/200 VUs, 1836 complete and 0 interrupted iterations
+order_creation   [  22% ] 142/200 VUs  1m07.0s/5m00.0s
+
+running (1m08.0s), 144/200 VUs, 1868 complete and 0 interrupted iterations
+order_creation   [  23% ] 144/200 VUs  1m08.0s/5m00.0s
+
+running (1m09.0s), 147/200 VUs, 1900 complete and 0 interrupted iterations
+order_creation   [  23% ] 147/200 VUs  1m09.0s/5m00.0s
+
+running (1m10.0s), 149/200 VUs, 1928 complete and 0 interrupted iterations
+order_creation   [  23% ] 149/200 VUs  1m10.0s/5m00.0s
+
+running (1m11.0s), 152/200 VUs, 1959 complete and 0 interrupted iterations
+order_creation   [  24% ] 152/200 VUs  1m11.0s/5m00.0s
+
+running (1m12.0s), 154/200 VUs, 1989 complete and 0 interrupted iterations
+order_creation   [  24% ] 154/200 VUs  1m12.0s/5m00.0s
+
+running (1m13.0s), 157/200 VUs, 2020 complete and 0 interrupted iterations
+order_creation   [  24% ] 157/200 VUs  1m13.0s/5m00.0s
+
+running (1m14.0s), 159/200 VUs, 2048 complete and 0 interrupted iterations
+order_creation   [  25% ] 159/200 VUs  1m14.0s/5m00.0s
+
+running (1m15.0s), 162/200 VUs, 2077 complete and 0 interrupted iterations
+order_creation   [  25% ] 162/200 VUs  1m15.0s/5m00.0s
+
+running (1m16.0s), 164/200 VUs, 2108 complete and 0 interrupted iterations
+order_creation   [  25% ] 164/200 VUs  1m16.0s/5m00.0s
+
+running (1m17.0s), 167/200 VUs, 2136 complete and 0 interrupted iterations
+order_creation   [  26% ] 167/200 VUs  1m17.0s/5m00.0s
+
+running (1m18.0s), 169/200 VUs, 2165 complete and 0 interrupted iterations
+order_creation   [  26% ] 169/200 VUs  1m18.0s/5m00.0s
+
+running (1m19.0s), 172/200 VUs, 2197 complete and 0 interrupted iterations
+order_creation   [  26% ] 172/200 VUs  1m19.0s/5m00.0s
+
+running (1m20.0s), 174/200 VUs, 2225 complete and 0 interrupted iterations
+order_creation   [  27% ] 174/200 VUs  1m20.0s/5m00.0s
+
+running (1m21.0s), 177/200 VUs, 2253 complete and 0 interrupted iterations
+order_creation   [  27% ] 177/200 VUs  1m21.0s/5m00.0s
+
+running (1m22.0s), 179/200 VUs, 2283 complete and 0 interrupted iterations
+order_creation   [  27% ] 179/200 VUs  1m22.0s/5m00.0s
+
+running (1m23.0s), 182/200 VUs, 2313 complete and 0 interrupted iterations
+order_creation   [  28% ] 182/200 VUs  1m23.0s/5m00.0s
+
+running (1m24.0s), 184/200 VUs, 2341 complete and 0 interrupted iterations
+order_creation   [  28% ] 184/200 VUs  1m24.0s/5m00.0s
+
+running (1m25.0s), 187/200 VUs, 2371 complete and 0 interrupted iterations
+order_creation   [  28% ] 187/200 VUs  1m25.0s/5m00.0s
+
+running (1m26.0s), 189/200 VUs, 2400 complete and 0 interrupted iterations
+order_creation   [  29% ] 189/200 VUs  1m26.0s/5m00.0s
+
+running (1m27.0s), 192/200 VUs, 2428 complete and 0 interrupted iterations
+order_creation   [  29% ] 192/200 VUs  1m27.0s/5m00.0s
+
+running (1m28.0s), 194/200 VUs, 2454 complete and 0 interrupted iterations
+order_creation   [  29% ] 194/200 VUs  1m28.0s/5m00.0s
+
+running (1m29.0s), 197/200 VUs, 2485 complete and 0 interrupted iterations
+order_creation   [  30% ] 197/200 VUs  1m29.0s/5m00.0s
+
+running (1m30.0s), 199/200 VUs, 2514 complete and 0 interrupted iterations
+order_creation   [  30% ] 199/200 VUs  1m30.0s/5m00.0s
+
+running (1m31.0s), 200/200 VUs, 2545 complete and 0 interrupted iterations
+order_creation   [  30% ] 200/200 VUs  1m31.0s/5m00.0s
+
+running (1m32.0s), 200/200 VUs, 2572 complete and 0 interrupted iterations
+order_creation   [  31% ] 200/200 VUs  1m32.0s/5m00.0s
+
+running (1m33.0s), 200/200 VUs, 2604 complete and 0 interrupted iterations
+order_creation   [  31% ] 200/200 VUs  1m33.0s/5m00.0s
+
+running (1m34.0s), 200/200 VUs, 2630 complete and 0 interrupted iterations
+order_creation   [  31% ] 200/200 VUs  1m34.0s/5m00.0s
+
+running (1m35.0s), 200/200 VUs, 2657 complete and 0 interrupted iterations
+order_creation   [  32% ] 200/200 VUs  1m35.0s/5m00.0s
+
+running (1m36.0s), 200/200 VUs, 2688 complete and 0 interrupted iterations
+order_creation   [  32% ] 200/200 VUs  1m36.0s/5m00.0s
+
+running (1m37.0s), 200/200 VUs, 2716 complete and 0 interrupted iterations
+order_creation   [  32% ] 200/200 VUs  1m37.0s/5m00.0s
+
+running (1m38.0s), 200/200 VUs, 2748 complete and 0 interrupted iterations
+order_creation   [  33% ] 200/200 VUs  1m38.0s/5m00.0s
+
+running (1m39.0s), 200/200 VUs, 2780 complete and 0 interrupted iterations
+order_creation   [  33% ] 200/200 VUs  1m39.0s/5m00.0s
+
+running (1m40.0s), 200/200 VUs, 2812 complete and 0 interrupted iterations
+order_creation   [  33% ] 200/200 VUs  1m40.0s/5m00.0s
+
+running (1m41.0s), 200/200 VUs, 2842 complete and 0 interrupted iterations
+order_creation   [  34% ] 200/200 VUs  1m41.0s/5m00.0s
+
+running (1m42.0s), 200/200 VUs, 2871 complete and 0 interrupted iterations
+order_creation   [  34% ] 200/200 VUs  1m42.0s/5m00.0s
+
+running (1m43.0s), 200/200 VUs, 2898 complete and 0 interrupted iterations
+order_creation   [  34% ] 200/200 VUs  1m43.0s/5m00.0s
+
+running (1m44.0s), 200/200 VUs, 2927 complete and 0 interrupted iterations
+order_creation   [  35% ] 200/200 VUs  1m44.0s/5m00.0s
+
+running (1m45.0s), 200/200 VUs, 2954 complete and 0 interrupted iterations
+order_creation   [  35% ] 200/200 VUs  1m45.0s/5m00.0s
+
+running (1m46.0s), 200/200 VUs, 2993 complete and 0 interrupted iterations
+order_creation   [  35% ] 200/200 VUs  1m46.0s/5m00.0s
+
+running (1m47.0s), 200/200 VUs, 3022 complete and 0 interrupted iterations
+order_creation   [  36% ] 200/200 VUs  1m47.0s/5m00.0s
+
+running (1m48.0s), 200/200 VUs, 3053 complete and 0 interrupted iterations
+order_creation   [  36% ] 200/200 VUs  1m48.0s/5m00.0s
+
+running (1m49.0s), 200/200 VUs, 3082 complete and 0 interrupted iterations
+order_creation   [  36% ] 200/200 VUs  1m49.0s/5m00.0s
+
+running (1m50.0s), 200/200 VUs, 3112 complete and 0 interrupted iterations
+order_creation   [  37% ] 200/200 VUs  1m50.0s/5m00.0s
+
+running (1m51.0s), 200/200 VUs, 3141 complete and 0 interrupted iterations
+order_creation   [  37% ] 200/200 VUs  1m51.0s/5m00.0s
+
+running (1m52.0s), 200/200 VUs, 3170 complete and 0 interrupted iterations
+order_creation   [  37% ] 200/200 VUs  1m52.0s/5m00.0s
+
+running (1m53.0s), 200/200 VUs, 3200 complete and 0 interrupted iterations
+order_creation   [  38% ] 200/200 VUs  1m53.0s/5m00.0s
+
+running (1m54.0s), 200/200 VUs, 3232 complete and 0 interrupted iterations
+order_creation   [  38% ] 200/200 VUs  1m54.0s/5m00.0s
+
+running (1m55.0s), 200/200 VUs, 3261 complete and 0 interrupted iterations
+order_creation   [  38% ] 200/200 VUs  1m55.0s/5m00.0s
+
+running (1m56.0s), 200/200 VUs, 3293 complete and 0 interrupted iterations
+order_creation   [  39% ] 200/200 VUs  1m56.0s/5m00.0s
+
+running (1m57.0s), 200/200 VUs, 3322 complete and 0 interrupted iterations
+order_creation   [  39% ] 200/200 VUs  1m57.0s/5m00.0s
+
+running (1m58.0s), 200/200 VUs, 3352 complete and 0 interrupted iterations
+order_creation   [  39% ] 200/200 VUs  1m58.0s/5m00.0s
+
+running (1m59.0s), 200/200 VUs, 3384 complete and 0 interrupted iterations
+order_creation   [  40% ] 200/200 VUs  1m59.0s/5m00.0s
+
+running (2m00.0s), 200/200 VUs, 3416 complete and 0 interrupted iterations
+order_creation   [  40% ] 200/200 VUs  2m00.0s/5m00.0s
+
+running (2m01.0s), 200/200 VUs, 3443 complete and 0 interrupted iterations
+order_creation   [  40% ] 200/200 VUs  2m01.0s/5m00.0s
+
+running (2m02.0s), 200/200 VUs, 3475 complete and 0 interrupted iterations
+order_creation   [  41% ] 200/200 VUs  2m02.0s/5m00.0s
+
+running (2m03.0s), 200/200 VUs, 3508 complete and 0 interrupted iterations
+order_creation   [  41% ] 200/200 VUs  2m03.0s/5m00.0s
+
+running (2m04.0s), 200/200 VUs, 3539 complete and 0 interrupted iterations
+order_creation   [  41% ] 200/200 VUs  2m04.0s/5m00.0s
+
+running (2m05.0s), 200/200 VUs, 3571 complete and 0 interrupted iterations
+order_creation   [  42% ] 200/200 VUs  2m05.0s/5m00.0s
+
+running (2m06.0s), 200/200 VUs, 3603 complete and 0 interrupted iterations
+order_creation   [  42% ] 200/200 VUs  2m06.0s/5m00.0s
+
+running (2m07.0s), 200/200 VUs, 3634 complete and 0 interrupted iterations
+order_creation   [  42% ] 200/200 VUs  2m07.0s/5m00.0s
+
+running (2m08.0s), 200/200 VUs, 3665 complete and 0 interrupted iterations
+order_creation   [  43% ] 200/200 VUs  2m08.0s/5m00.0s
+
+running (2m09.0s), 200/200 VUs, 3697 complete and 0 interrupted iterations
+order_creation   [  43% ] 200/200 VUs  2m09.0s/5m00.0s
+
+running (2m10.0s), 200/200 VUs, 3728 complete and 0 interrupted iterations
+order_creation   [  43% ] 200/200 VUs  2m10.0s/5m00.0s
+
+running (2m11.0s), 200/200 VUs, 3763 complete and 0 interrupted iterations
+order_creation   [  44% ] 200/200 VUs  2m11.0s/5m00.0s
+
+running (2m12.0s), 200/200 VUs, 3793 complete and 0 interrupted iterations
+order_creation   [  44% ] 200/200 VUs  2m12.0s/5m00.0s
+
+running (2m13.0s), 200/200 VUs, 3824 complete and 0 interrupted iterations
+order_creation   [  44% ] 200/200 VUs  2m13.0s/5m00.0s
+
+running (2m14.0s), 200/200 VUs, 3851 complete and 0 interrupted iterations
+order_creation   [  45% ] 200/200 VUs  2m14.0s/5m00.0s
+
+running (2m15.0s), 200/200 VUs, 3883 complete and 0 interrupted iterations
+order_creation   [  45% ] 200/200 VUs  2m15.0s/5m00.0s
+
+running (2m16.0s), 200/200 VUs, 3917 complete and 0 interrupted iterations
+order_creation   [  45% ] 200/200 VUs  2m16.0s/5m00.0s
+
+running (2m17.0s), 200/200 VUs, 3948 complete and 0 interrupted iterations
+order_creation   [  46% ] 200/200 VUs  2m17.0s/5m00.0s
+
+running (2m18.0s), 200/200 VUs, 3978 complete and 0 interrupted iterations
+order_creation   [  46% ] 200/200 VUs  2m18.0s/5m00.0s
+
+running (2m19.0s), 200/200 VUs, 4016 complete and 0 interrupted iterations
+order_creation   [  46% ] 200/200 VUs  2m19.0s/5m00.0s
+
+running (2m20.0s), 200/200 VUs, 4051 complete and 0 interrupted iterations
+order_creation   [  47% ] 200/200 VUs  2m20.0s/5m00.0s
+
+running (2m21.0s), 200/200 VUs, 4081 complete and 0 interrupted iterations
+order_creation   [  47% ] 200/200 VUs  2m21.0s/5m00.0s
+
+running (2m22.0s), 200/200 VUs, 4112 complete and 0 interrupted iterations
+order_creation   [  47% ] 200/200 VUs  2m22.0s/5m00.0s
+
+running (2m23.0s), 200/200 VUs, 4149 complete and 0 interrupted iterations
+order_creation   [  48% ] 200/200 VUs  2m23.0s/5m00.0s
+
+running (2m24.0s), 200/200 VUs, 4180 complete and 0 interrupted iterations
+order_creation   [  48% ] 200/200 VUs  2m24.0s/5m00.0s
+
+running (2m25.0s), 200/200 VUs, 4209 complete and 0 interrupted iterations
+order_creation   [  48% ] 200/200 VUs  2m25.0s/5m00.0s
+
+running (2m26.0s), 200/200 VUs, 4240 complete and 0 interrupted iterations
+order_creation   [  49% ] 200/200 VUs  2m26.0s/5m00.0s
+
+running (2m27.0s), 200/200 VUs, 4278 complete and 0 interrupted iterations
+order_creation   [  49% ] 200/200 VUs  2m27.0s/5m00.0s
+
+running (2m28.0s), 200/200 VUs, 4307 complete and 0 interrupted iterations
+order_creation   [  49% ] 200/200 VUs  2m28.0s/5m00.0s
+
+running (2m29.0s), 200/200 VUs, 4341 complete and 0 interrupted iterations
+order_creation   [  50% ] 200/200 VUs  2m29.0s/5m00.0s
+
+running (2m30.0s), 200/200 VUs, 4372 complete and 0 interrupted iterations
+order_creation   [  50% ] 200/200 VUs  2m30.0s/5m00.0s
+
+running (2m31.0s), 200/200 VUs, 4405 complete and 0 interrupted iterations
+order_creation   [  50% ] 200/200 VUs  2m31.0s/5m00.0s
+
+running (2m32.0s), 200/200 VUs, 4436 complete and 0 interrupted iterations
+order_creation   [  51% ] 200/200 VUs  2m32.0s/5m00.0s
+
+running (2m33.0s), 200/200 VUs, 4467 complete and 0 interrupted iterations
+order_creation   [  51% ] 200/200 VUs  2m33.0s/5m00.0s
+
+running (2m34.0s), 200/200 VUs, 4498 complete and 0 interrupted iterations
+order_creation   [  51% ] 200/200 VUs  2m34.0s/5m00.0s
+
+running (2m35.0s), 200/200 VUs, 4530 complete and 0 interrupted iterations
+order_creation   [  52% ] 200/200 VUs  2m35.0s/5m00.0s
+
+running (2m36.0s), 200/200 VUs, 4563 complete and 0 interrupted iterations
+order_creation   [  52% ] 200/200 VUs  2m36.0s/5m00.0s
+
+running (2m37.0s), 200/200 VUs, 4593 complete and 0 interrupted iterations
+order_creation   [  52% ] 200/200 VUs  2m37.0s/5m00.0s
+
+running (2m38.0s), 200/200 VUs, 4623 complete and 0 interrupted iterations
+order_creation   [  53% ] 200/200 VUs  2m38.0s/5m00.0s
+
+running (2m39.0s), 200/200 VUs, 4657 complete and 0 interrupted iterations
+order_creation   [  53% ] 200/200 VUs  2m39.0s/5m00.0s
+
+running (2m40.0s), 200/200 VUs, 4688 complete and 0 interrupted iterations
+order_creation   [  53% ] 200/200 VUs  2m40.0s/5m00.0s
+
+running (2m41.0s), 200/200 VUs, 4719 complete and 0 interrupted iterations
+order_creation   [  54% ] 200/200 VUs  2m41.0s/5m00.0s
+
+running (2m42.0s), 200/200 VUs, 4754 complete and 0 interrupted iterations
+order_creation   [  54% ] 200/200 VUs  2m42.0s/5m00.0s
+
+running (2m43.0s), 200/200 VUs, 4784 complete and 0 interrupted iterations
+order_creation   [  54% ] 200/200 VUs  2m43.0s/5m00.0s
+
+running (2m44.0s), 200/200 VUs, 4816 complete and 0 interrupted iterations
+order_creation   [  55% ] 200/200 VUs  2m44.0s/5m00.0s
+
+running (2m45.0s), 200/200 VUs, 4850 complete and 0 interrupted iterations
+order_creation   [  55% ] 200/200 VUs  2m45.0s/5m00.0s
+
+running (2m46.0s), 200/200 VUs, 4880 complete and 0 interrupted iterations
+order_creation   [  55% ] 200/200 VUs  2m46.0s/5m00.0s
+
+running (2m47.0s), 200/200 VUs, 4916 complete and 0 interrupted iterations
+order_creation   [  56% ] 200/200 VUs  2m47.0s/5m00.0s
+
+running (2m48.0s), 200/200 VUs, 4945 complete and 0 interrupted iterations
+order_creation   [  56% ] 200/200 VUs  2m48.0s/5m00.0s
+
+running (2m49.0s), 200/200 VUs, 4976 complete and 0 interrupted iterations
+order_creation   [  56% ] 200/200 VUs  2m49.0s/5m00.0s
+
+running (2m50.0s), 200/200 VUs, 5007 complete and 0 interrupted iterations
+order_creation   [  57% ] 200/200 VUs  2m50.0s/5m00.0s
+
+running (2m51.0s), 200/200 VUs, 5040 complete and 0 interrupted iterations
+order_creation   [  57% ] 200/200 VUs  2m51.0s/5m00.0s
+
+running (2m52.0s), 200/200 VUs, 5069 complete and 0 interrupted iterations
+order_creation   [  57% ] 200/200 VUs  2m52.0s/5m00.0s
+
+running (2m53.0s), 200/200 VUs, 5103 complete and 0 interrupted iterations
+order_creation   [  58% ] 200/200 VUs  2m53.0s/5m00.0s
+
+running (2m54.0s), 200/200 VUs, 5132 complete and 0 interrupted iterations
+order_creation   [  58% ] 200/200 VUs  2m54.0s/5m00.0s
+
+running (2m55.0s), 200/200 VUs, 5163 complete and 0 interrupted iterations
+order_creation   [  58% ] 200/200 VUs  2m55.0s/5m00.0s
+
+running (2m56.0s), 200/200 VUs, 5194 complete and 0 interrupted iterations
+order_creation   [  59% ] 200/200 VUs  2m56.0s/5m00.0s
+
+running (2m57.0s), 200/200 VUs, 5222 complete and 0 interrupted iterations
+order_creation   [  59% ] 200/200 VUs  2m57.0s/5m00.0s
+
+running (2m58.0s), 200/200 VUs, 5253 complete and 0 interrupted iterations
+order_creation   [  59% ] 200/200 VUs  2m58.0s/5m00.0s
+
+running (2m59.0s), 200/200 VUs, 5282 complete and 0 interrupted iterations
+order_creation   [  60% ] 200/200 VUs  2m59.0s/5m00.0s
+
+running (3m00.0s), 200/200 VUs, 5312 complete and 0 interrupted iterations
+order_creation   [  60% ] 200/200 VUs  3m00.0s/5m00.0s
+
+running (3m01.0s), 200/200 VUs, 5344 complete and 0 interrupted iterations
+order_creation   [  60% ] 200/200 VUs  3m01.0s/5m00.0s
+
+running (3m02.0s), 200/200 VUs, 5372 complete and 0 interrupted iterations
+order_creation   [  61% ] 200/200 VUs  3m02.0s/5m00.0s
+
+running (3m03.0s), 200/200 VUs, 5398 complete and 0 interrupted iterations
+order_creation   [  61% ] 200/200 VUs  3m03.0s/5m00.0s
+
+running (3m04.0s), 200/200 VUs, 5428 complete and 0 interrupted iterations
+order_creation   [  61% ] 200/200 VUs  3m04.0s/5m00.0s
+
+running (3m05.0s), 200/200 VUs, 5455 complete and 0 interrupted iterations
+order_creation   [  62% ] 200/200 VUs  3m05.0s/5m00.0s
+
+running (3m06.0s), 200/200 VUs, 5483 complete and 0 interrupted iterations
+order_creation   [  62% ] 200/200 VUs  3m06.0s/5m00.0s
+
+running (3m07.0s), 200/200 VUs, 5515 complete and 0 interrupted iterations
+order_creation   [  62% ] 200/200 VUs  3m07.0s/5m00.0s
+
+running (3m08.0s), 200/200 VUs, 5544 complete and 0 interrupted iterations
+order_creation   [  63% ] 200/200 VUs  3m08.0s/5m00.0s
+
+running (3m09.0s), 200/200 VUs, 5577 complete and 0 interrupted iterations
+order_creation   [  63% ] 200/200 VUs  3m09.0s/5m00.0s
+
+running (3m10.0s), 200/200 VUs, 5606 complete and 0 interrupted iterations
+order_creation   [  63% ] 200/200 VUs  3m10.0s/5m00.0s
+
+running (3m11.0s), 200/200 VUs, 5639 complete and 0 interrupted iterations
+order_creation   [  64% ] 200/200 VUs  3m11.0s/5m00.0s
+
+running (3m12.0s), 200/200 VUs, 5667 complete and 0 interrupted iterations
+order_creation   [  64% ] 200/200 VUs  3m12.0s/5m00.0s
+
+running (3m13.0s), 200/200 VUs, 5695 complete and 0 interrupted iterations
+order_creation   [  64% ] 200/200 VUs  3m13.0s/5m00.0s
+
+running (3m14.0s), 200/200 VUs, 5726 complete and 0 interrupted iterations
+order_creation   [  65% ] 200/200 VUs  3m14.0s/5m00.0s
+
+running (3m15.0s), 200/200 VUs, 5757 complete and 0 interrupted iterations
+order_creation   [  65% ] 200/200 VUs  3m15.0s/5m00.0s
+
+running (3m16.0s), 200/200 VUs, 5788 complete and 0 interrupted iterations
+order_creation   [  65% ] 200/200 VUs  3m16.0s/5m00.0s
+
+running (3m17.0s), 200/200 VUs, 5819 complete and 0 interrupted iterations
+order_creation   [  66% ] 200/200 VUs  3m17.0s/5m00.0s
+
+running (3m18.0s), 200/200 VUs, 5849 complete and 0 interrupted iterations
+order_creation   [  66% ] 200/200 VUs  3m18.0s/5m00.0s
+
+running (3m19.0s), 200/200 VUs, 5883 complete and 0 interrupted iterations
+order_creation   [  66% ] 200/200 VUs  3m19.0s/5m00.0s
+
+running (3m20.0s), 200/200 VUs, 5912 complete and 0 interrupted iterations
+order_creation   [  67% ] 200/200 VUs  3m20.0s/5m00.0s
+
+running (3m21.0s), 200/200 VUs, 5944 complete and 0 interrupted iterations
+order_creation   [  67% ] 200/200 VUs  3m21.0s/5m00.0s
+
+running (3m22.0s), 200/200 VUs, 5974 complete and 0 interrupted iterations
+order_creation   [  67% ] 200/200 VUs  3m22.0s/5m00.0s
+
+running (3m23.0s), 200/200 VUs, 6004 complete and 0 interrupted iterations
+order_creation   [  68% ] 200/200 VUs  3m23.0s/5m00.0s
+
+running (3m24.0s), 200/200 VUs, 6037 complete and 0 interrupted iterations
+order_creation   [  68% ] 200/200 VUs  3m24.0s/5m00.0s
+
+running (3m25.0s), 200/200 VUs, 6068 complete and 0 interrupted iterations
+order_creation   [  68% ] 200/200 VUs  3m25.0s/5m00.0s
+
+running (3m26.0s), 200/200 VUs, 6099 complete and 0 interrupted iterations
+order_creation   [  69% ] 200/200 VUs  3m26.0s/5m00.0s
+
+running (3m27.0s), 200/200 VUs, 6131 complete and 0 interrupted iterations
+order_creation   [  69% ] 200/200 VUs  3m27.0s/5m00.0s
+
+running (3m28.0s), 200/200 VUs, 6164 complete and 0 interrupted iterations
+order_creation   [  69% ] 200/200 VUs  3m28.0s/5m00.0s
+
+running (3m29.0s), 200/200 VUs, 6196 complete and 0 interrupted iterations
+order_creation   [  70% ] 200/200 VUs  3m29.0s/5m00.0s
+
+running (3m30.0s), 200/200 VUs, 6225 complete and 0 interrupted iterations
+order_creation   [  70% ] 200/200 VUs  3m30.0s/5m00.0s
+
+running (3m31.0s), 200/200 VUs, 6260 complete and 0 interrupted iterations
+order_creation   [  70% ] 200/200 VUs  3m31.0s/5m00.0s
+
+running (3m32.0s), 200/200 VUs, 6293 complete and 0 interrupted iterations
+order_creation   [  71% ] 200/200 VUs  3m32.0s/5m00.0s
+
+running (3m33.0s), 200/200 VUs, 6324 complete and 0 interrupted iterations
+order_creation   [  71% ] 200/200 VUs  3m33.0s/5m00.0s
+
+running (3m34.0s), 200/200 VUs, 6354 complete and 0 interrupted iterations
+order_creation   [  71% ] 200/200 VUs  3m34.0s/5m00.0s
+
+running (3m35.0s), 200/200 VUs, 6384 complete and 0 interrupted iterations
+order_creation   [  72% ] 200/200 VUs  3m35.0s/5m00.0s
+
+running (3m36.0s), 200/200 VUs, 6414 complete and 0 interrupted iterations
+order_creation   [  72% ] 200/200 VUs  3m36.0s/5m00.0s
+
+running (3m37.0s), 200/200 VUs, 6445 complete and 0 interrupted iterations
+order_creation   [  72% ] 200/200 VUs  3m37.0s/5m00.0s
+
+running (3m38.0s), 200/200 VUs, 6474 complete and 0 interrupted iterations
+order_creation   [  73% ] 200/200 VUs  3m38.0s/5m00.0s
+
+running (3m39.0s), 200/200 VUs, 6506 complete and 0 interrupted iterations
+order_creation   [  73% ] 200/200 VUs  3m39.0s/5m00.0s
+
+running (3m40.0s), 200/200 VUs, 6536 complete and 0 interrupted iterations
+order_creation   [  73% ] 200/200 VUs  3m40.0s/5m00.0s
+
+running (3m41.0s), 200/200 VUs, 6569 complete and 0 interrupted iterations
+order_creation   [  74% ] 200/200 VUs  3m41.0s/5m00.0s
+
+running (3m42.0s), 200/200 VUs, 6597 complete and 0 interrupted iterations
+order_creation   [  74% ] 200/200 VUs  3m42.0s/5m00.0s
+
+running (3m43.0s), 200/200 VUs, 6631 complete and 0 interrupted iterations
+order_creation   [  74% ] 200/200 VUs  3m43.0s/5m00.0s
+
+running (3m44.0s), 200/200 VUs, 6663 complete and 0 interrupted iterations
+order_creation   [  75% ] 200/200 VUs  3m44.0s/5m00.0s
+
+running (3m45.0s), 200/200 VUs, 6694 complete and 0 interrupted iterations
+order_creation   [  75% ] 200/200 VUs  3m45.0s/5m00.0s
+
+running (3m46.0s), 200/200 VUs, 6725 complete and 0 interrupted iterations
+order_creation   [  75% ] 200/200 VUs  3m46.0s/5m00.0s
+
+running (3m47.0s), 200/200 VUs, 6754 complete and 0 interrupted iterations
+order_creation   [  76% ] 200/200 VUs  3m47.0s/5m00.0s
+
+running (3m48.0s), 200/200 VUs, 6788 complete and 0 interrupted iterations
+order_creation   [  76% ] 200/200 VUs  3m48.0s/5m00.0s
+
+running (3m49.0s), 200/200 VUs, 6819 complete and 0 interrupted iterations
+order_creation   [  76% ] 200/200 VUs  3m49.0s/5m00.0s
+
+running (3m50.0s), 200/200 VUs, 6850 complete and 0 interrupted iterations
+order_creation   [  77% ] 200/200 VUs  3m50.0s/5m00.0s
+
+running (3m51.0s), 200/200 VUs, 6886 complete and 0 interrupted iterations
+order_creation   [  77% ] 200/200 VUs  3m51.0s/5m00.0s
+
+running (3m52.0s), 200/200 VUs, 6921 complete and 0 interrupted iterations
+order_creation   [  77% ] 200/200 VUs  3m52.0s/5m00.0s
+
+running (3m53.0s), 200/200 VUs, 6952 complete and 0 interrupted iterations
+order_creation   [  78% ] 200/200 VUs  3m53.0s/5m00.0s
+
+running (3m54.0s), 200/200 VUs, 6983 complete and 0 interrupted iterations
+order_creation   [  78% ] 200/200 VUs  3m54.0s/5m00.0s
+
+running (3m55.0s), 200/200 VUs, 7014 complete and 0 interrupted iterations
+order_creation   [  78% ] 200/200 VUs  3m55.0s/5m00.0s
+
+running (3m56.0s), 200/200 VUs, 7045 complete and 0 interrupted iterations
+order_creation   [  79% ] 200/200 VUs  3m56.0s/5m00.0s
+
+running (3m57.0s), 200/200 VUs, 7077 complete and 0 interrupted iterations
+order_creation   [  79% ] 200/200 VUs  3m57.0s/5m00.0s
+
+running (3m58.0s), 200/200 VUs, 7112 complete and 0 interrupted iterations
+order_creation   [  79% ] 200/200 VUs  3m58.0s/5m00.0s
+
+running (3m59.0s), 200/200 VUs, 7144 complete and 0 interrupted iterations
+order_creation   [  80% ] 200/200 VUs  3m59.0s/5m00.0s
+
+running (4m00.0s), 200/200 VUs, 7177 complete and 0 interrupted iterations
+order_creation   [  80% ] 200/200 VUs  4m00.0s/5m00.0s
+
+running (4m01.0s), 200/200 VUs, 7213 complete and 0 interrupted iterations
+order_creation   [  80% ] 200/200 VUs  4m01.0s/5m00.0s
+
+running (4m02.0s), 200/200 VUs, 7244 complete and 0 interrupted iterations
+order_creation   [  81% ] 200/200 VUs  4m02.0s/5m00.0s
+
+running (4m03.0s), 200/200 VUs, 7278 complete and 0 interrupted iterations
+order_creation   [  81% ] 200/200 VUs  4m03.0s/5m00.0s
+
+running (4m04.0s), 200/200 VUs, 7311 complete and 0 interrupted iterations
+order_creation   [  81% ] 200/200 VUs  4m04.0s/5m00.0s
+
+running (4m05.0s), 200/200 VUs, 7343 complete and 0 interrupted iterations
+order_creation   [  82% ] 200/200 VUs  4m05.0s/5m00.0s
+
+running (4m06.0s), 200/200 VUs, 7371 complete and 0 interrupted iterations
+order_creation   [  82% ] 200/200 VUs  4m06.0s/5m00.0s
+
+running (4m07.0s), 200/200 VUs, 7401 complete and 0 interrupted iterations
+order_creation   [  82% ] 200/200 VUs  4m07.0s/5m00.0s
+
+running (4m08.0s), 200/200 VUs, 7431 complete and 0 interrupted iterations
+order_creation   [  83% ] 200/200 VUs  4m08.0s/5m00.0s
+
+running (4m09.0s), 200/200 VUs, 7461 complete and 0 interrupted iterations
+order_creation   [  83% ] 200/200 VUs  4m09.0s/5m00.0s
+
+running (4m10.0s), 200/200 VUs, 7496 complete and 0 interrupted iterations
+order_creation   [  83% ] 200/200 VUs  4m10.0s/5m00.0s
+
+running (4m11.0s), 200/200 VUs, 7531 complete and 0 interrupted iterations
+order_creation   [  84% ] 200/200 VUs  4m11.0s/5m00.0s
+
+running (4m12.0s), 200/200 VUs, 7563 complete and 0 interrupted iterations
+order_creation   [  84% ] 200/200 VUs  4m12.0s/5m00.0s
+
+running (4m13.0s), 200/200 VUs, 7593 complete and 0 interrupted iterations
+order_creation   [  84% ] 200/200 VUs  4m13.0s/5m00.0s
+
+running (4m14.0s), 200/200 VUs, 7626 complete and 0 interrupted iterations
+order_creation   [  85% ] 200/200 VUs  4m14.0s/5m00.0s
+
+running (4m15.0s), 200/200 VUs, 7658 complete and 0 interrupted iterations
+order_creation   [  85% ] 200/200 VUs  4m15.0s/5m00.0s
+
+running (4m16.0s), 200/200 VUs, 7693 complete and 0 interrupted iterations
+order_creation   [  85% ] 200/200 VUs  4m16.0s/5m00.0s
+
+running (4m17.0s), 200/200 VUs, 7724 complete and 0 interrupted iterations
+order_creation   [  86% ] 200/200 VUs  4m17.0s/5m00.0s
+
+running (4m18.0s), 200/200 VUs, 7758 complete and 0 interrupted iterations
+order_creation   [  86% ] 200/200 VUs  4m18.0s/5m00.0s
+
+running (4m19.0s), 200/200 VUs, 7787 complete and 0 interrupted iterations
+order_creation   [  86% ] 200/200 VUs  4m19.0s/5m00.0s
+
+running (4m20.0s), 200/200 VUs, 7820 complete and 0 interrupted iterations
+order_creation   [  87% ] 200/200 VUs  4m20.0s/5m00.0s
+
+running (4m21.0s), 200/200 VUs, 7851 complete and 0 interrupted iterations
+order_creation   [  87% ] 200/200 VUs  4m21.0s/5m00.0s
+
+running (4m22.0s), 200/200 VUs, 7883 complete and 0 interrupted iterations
+order_creation   [  87% ] 200/200 VUs  4m22.0s/5m00.0s
+
+running (4m23.0s), 200/200 VUs, 7915 complete and 0 interrupted iterations
+order_creation   [  88% ] 200/200 VUs  4m23.0s/5m00.0s
+
+running (4m24.0s), 200/200 VUs, 7948 complete and 0 interrupted iterations
+order_creation   [  88% ] 200/200 VUs  4m24.0s/5m00.0s
+
+running (4m25.0s), 200/200 VUs, 7979 complete and 0 interrupted iterations
+order_creation   [  88% ] 200/200 VUs  4m25.0s/5m00.0s
+
+running (4m26.0s), 200/200 VUs, 8013 complete and 0 interrupted iterations
+order_creation   [  89% ] 200/200 VUs  4m26.0s/5m00.0s
+
+running (4m27.0s), 200/200 VUs, 8046 complete and 0 interrupted iterations
+order_creation   [  89% ] 200/200 VUs  4m27.0s/5m00.0s
+
+running (4m28.0s), 200/200 VUs, 8078 complete and 0 interrupted iterations
+order_creation   [  89% ] 200/200 VUs  4m28.0s/5m00.0s
+
+running (4m29.0s), 200/200 VUs, 8109 complete and 0 interrupted iterations
+order_creation   [  90% ] 200/200 VUs  4m29.0s/5m00.0s
+
+running (4m30.0s), 200/200 VUs, 8141 complete and 0 interrupted iterations
+order_creation   [  90% ] 200/200 VUs  4m30.0s/5m00.0s
+
+running (4m31.0s), 200/200 VUs, 8175 complete and 0 interrupted iterations
+order_creation   [  90% ] 200/200 VUs  4m31.0s/5m00.0s
+
+running (4m32.0s), 198/200 VUs, 8208 complete and 0 interrupted iterations
+order_creation   [  91% ] 198/200 VUs  4m32.0s/5m00.0s
+
+running (4m33.0s), 196/200 VUs, 8244 complete and 0 interrupted iterations
+order_creation   [  91% ] 196/200 VUs  4m33.0s/5m00.0s
+
+running (4m34.0s), 192/200 VUs, 8276 complete and 0 interrupted iterations
+order_creation   [  91% ] 192/200 VUs  4m34.0s/5m00.0s
+
+running (4m35.0s), 188/200 VUs, 8309 complete and 0 interrupted iterations
+order_creation   [  92% ] 188/200 VUs  4m35.0s/5m00.0s
+
+running (4m36.0s), 185/200 VUs, 8340 complete and 0 interrupted iterations
+order_creation   [  92% ] 185/200 VUs  4m36.0s/5m00.0s
+
+running (4m37.0s), 177/200 VUs, 8370 complete and 0 interrupted iterations
+order_creation   [  92% ] 177/200 VUs  4m37.0s/5m00.0s
+
+running (4m38.0s), 170/200 VUs, 8405 complete and 0 interrupted iterations
+order_creation   [  93% ] 170/200 VUs  4m38.0s/5m00.0s
+
+running (4m39.0s), 161/200 VUs, 8439 complete and 0 interrupted iterations
+order_creation   [  93% ] 161/200 VUs  4m39.0s/5m00.0s
+
+running (4m40.0s), 154/200 VUs, 8472 complete and 0 interrupted iterations
+order_creation   [  93% ] 154/200 VUs  4m40.0s/5m00.0s
+
+running (4m41.0s), 146/200 VUs, 8505 complete and 0 interrupted iterations
+order_creation   [  94% ] 146/200 VUs  4m41.0s/5m00.0s
+
+running (4m42.0s), 140/200 VUs, 8538 complete and 0 interrupted iterations
+order_creation   [  94% ] 140/200 VUs  4m42.0s/5m00.0s
+
+running (4m43.0s), 132/200 VUs, 8572 complete and 0 interrupted iterations
+order_creation   [  94% ] 132/200 VUs  4m43.0s/5m00.0s
+
+running (4m44.0s), 123/200 VUs, 8604 complete and 0 interrupted iterations
+order_creation   [  95% ] 123/200 VUs  4m44.0s/5m00.0s
+
+running (4m45.0s), 116/200 VUs, 8636 complete and 0 interrupted iterations
+order_creation   [  95% ] 116/200 VUs  4m45.0s/5m00.0s
+
+running (4m46.0s), 109/200 VUs, 8671 complete and 0 interrupted iterations
+order_creation   [  95% ] 109/200 VUs  4m46.0s/5m00.0s
+
+running (4m47.0s), 102/200 VUs, 8705 complete and 0 interrupted iterations
+order_creation   [  96% ] 102/200 VUs  4m47.0s/5m00.0s
+
+running (4m48.0s), 091/200 VUs, 8740 complete and 0 interrupted iterations
+order_creation   [  96% ] 091/200 VUs  4m48.0s/5m00.0s
+
+running (4m49.0s), 084/200 VUs, 8771 complete and 0 interrupted iterations
+order_creation   [  96% ] 084/200 VUs  4m49.0s/5m00.0s
+
+running (4m50.0s), 079/200 VUs, 8807 complete and 0 interrupted iterations
+order_creation   [  97% ] 079/200 VUs  4m50.0s/5m00.0s
+
+running (4m51.0s), 070/200 VUs, 8841 complete and 0 interrupted iterations
+order_creation   [  97% ] 070/200 VUs  4m51.0s/5m00.0s
+
+running (4m52.0s), 063/200 VUs, 8872 complete and 0 interrupted iterations
+order_creation   [  97% ] 063/200 VUs  4m52.0s/5m00.0s
+
+running (4m53.0s), 056/200 VUs, 8903 complete and 0 interrupted iterations
+order_creation   [  98% ] 056/200 VUs  4m53.0s/5m00.0s
+
+running (4m54.0s), 047/200 VUs, 8937 complete and 0 interrupted iterations
+order_creation   [  98% ] 047/200 VUs  4m54.0s/5m00.0s
+
+running (4m55.0s), 039/200 VUs, 8970 complete and 0 interrupted iterations
+order_creation   [  98% ] 039/200 VUs  4m55.0s/5m00.0s
+
+running (4m56.0s), 031/200 VUs, 9003 complete and 0 interrupted iterations
+order_creation   [  99% ] 031/200 VUs  4m56.0s/5m00.0s
+
+running (4m57.0s), 024/200 VUs, 9037 complete and 0 interrupted iterations
+order_creation   [  99% ] 024/200 VUs  4m57.0s/5m00.0s
+
+running (4m58.0s), 016/200 VUs, 9069 complete and 0 interrupted iterations
+order_creation   [  99% ] 016/200 VUs  4m58.0s/5m00.0s
+
+running (4m59.0s), 008/200 VUs, 9106 complete and 0 interrupted iterations
+order_creation   [ 100% ] 008/200 VUs  4m59.0s/5m00.0s
+
+running (5m00.0s), 001/200 VUs, 9132 complete and 0 interrupted iterations
+order_creation   [ 100% ] 001/200 VUs  5m00.0s/5m00.0s
+
+=== ADR-005 시나리오 3 측정 결과 (E2) ===
+
+order_create p50:  n/a ms
+order_create p95:  39.3 ms
+order_create p99:  n/a ms
+order_create fail rate: 3.25%
+총 요청: 27173, throughput: 90.5 req/s
+멱등성 위반: 17
+
+running (5m00.2s), 000/200 VUs, 9134 complete and 0 interrupted iterations
+order_creation ✓ [ 100% ] 000/200 VUs  5m0s
+time="2026-05-26T14:53:27Z" level=error msg="thresholds on metrics 'http_req_failed{name:order_create}' have been crossed"
+
