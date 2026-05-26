@@ -2,18 +2,28 @@ server:
   port: 80
 
 spring:
+  application:
+    name: gateway
   cloud:
     gateway:
       routes:
+      # ADR-005: 하드코딩 주소 → Eureka service-id 기반 lb:// 라우팅
       - id: user-api
-        uri: http://ip-172-31-14-162.ap-northeast-2.compute.internal:8080
+        uri: lb://user-api
         predicates:
         - Path=/user/**
         filters:
         - RewritePath=/user/(?<path>.*), /$\{path}
       - id: order-api
-        uri: http://ip-172-31-14-142.ap-northeast-2.compute.internal:8080
+        uri: lb://order-api
         predicates:
         - Path=/order/**
         filters:
         - RewritePath=/order/(?<path>.*), /$\{path}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
