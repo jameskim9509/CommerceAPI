@@ -27,3 +27,8 @@ spring:
       group-id: test
     listener:
       auto-startup: false
+
+# Outbox poller 도 broker 가 없으니 테스트에서는 끈다 (ADR-004)
+outbox:
+  poller:
+    enabled: false

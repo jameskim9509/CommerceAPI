@@ -28,6 +28,11 @@ spring:
     listener:
       auto-startup: false
 
+# Outbox poller 도 broker 가 없으니 테스트에서는 끈다 (ADR-004)
+outbox:
+  poller:
+    enabled: false
+
 # @SpringBootTest 가 UserClient (Feign) 빈을 생성할 때 placeholder 가 비어 있지 않도록 더미 값
 user-api:
   url: http://localhost:8080/user/customer
