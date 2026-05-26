@@ -2,6 +2,8 @@ package com.zerobase.orderApi.saga;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -23,13 +25,14 @@ public class OutboxEvent {
 
     @Id
     @Column(name = "event_id", length = 36)
+    @JdbcTypeCode(SqlTypes.VARCHAR)   // Flyway V5 가 VARCHAR(36) 으로 생성한 컬럼과 매핑 일치
     private UUID eventId;
 
     @Column(nullable = false, length = 100)
     private String topic;
 
-    @Lob
-    @Column(nullable = false)
+    // Flyway V5 가 MEDIUMTEXT 로 생성한 컬럼과 정합. @Lob 기본 매핑(TINYTEXT) 과 충돌하지 않게 명시.
+    @Column(nullable = false, columnDefinition = "MEDIUMTEXT")
     private String payload;
 
     @Column(name = "created_at", nullable = false)
