@@ -1,0 +1,203 @@
+# =============================================================================
+# ADR-005 시나리오 3 QA 측정 환경
+#
+# docker-compose.test.yml 와 분리한 이유:
+#   - 측정 전용 자원 한도 (인스턴스당 2 CPU / 1 GB) → 4 인스턴스 동시 띄우기 가능
+#   - 시드 자동화는 별도 run-experiments.sh 가 docker exec 로 수행
+#   - k6 컨테이너 추가 + qa/k6 / qa/results 볼륨 마운트
+#
+# 사용:
+#   docker compose -f qa/docker-compose.qa.yml up -d                 # 기본 (orderapi 1 개)
+#   docker compose -f qa/docker-compose.qa.yml up -d --scale orderapi=N
+#   docker compose -f qa/docker-compose.qa.yml down -v               # 정리 (볼륨 포함)
+# =============================================================================
+
+services:
+  mysql-user:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: user
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-user-qa-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [commerce-qa]
+
+  mysql-order:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: orders
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-order-qa-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [commerce-qa]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [commerce-qa]
+
+  kafka:
+    image: bitnamilegacy/kafka:3.7  # bitnami 가 namespace 를 옮겨 기존 태그는 docker.io 에서 사라짐
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [commerce-qa]
+
+  eureka:
+    build:
+      context: ../eurekaServer
+      dockerfile: Dockerfile
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8761/ > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks: [commerce-qa]
+
+  userapi:
+    build:
+      context: ../userApi
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      MYSQL_HOST: mysql-user
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: user
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+      MAILGUN_APIKEY: dummy
+      MAILGUN_DOMAIN: dummy.local
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
+    ports:
+      - "8081:8080"
+    depends_on:
+      mysql-user: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      eureka: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+    networks: [commerce-qa]
+
+  # ADR-005 측정 대상. --scale orderapi=N 으로 N 인스턴스 기동.
+  orderapi:
+    build:
+      context: ../orderApi
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      MYSQL_HOST: mysql-order
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: orders
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      USER_API_URL: http://gateway/user/customer
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
+    depends_on:
+      mysql-order: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      eureka: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+    networks: [commerce-qa]
+
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
+    ports:
+      - "8080:80"
+    depends_on:
+      eureka: { condition: service_healthy }
+      userapi: { condition: service_started }
+      orderapi: { condition: service_started }
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 768M
+    networks: [commerce-qa]
+
+  # k6 부하 발생기. 각 실험마다 별도로 실행: docker compose run k6
+  k6:
+    image: grafana/k6:0.51.0
+    volumes:
+      - ./k6:/scripts:ro
+      - ./results:/results
+    environment:
+      GATEWAY_URL: http://gateway
+      USER_COUNT: 1000
+      PRODUCT_ITEM_BASE_ID: 1
+      EXPERIMENT_LABEL: ${EXPERIMENT_LABEL:-unknown}
+    depends_on:
+      gateway: { condition: service_started }
+    networks: [commerce-qa]
+    # k6 run 은 run-experiments 스크립트에서 명시적으로 호출
+
+networks:
+  commerce-qa:
+    driver: bridge
+
+volumes:
+  mysql-user-qa-data:
+  mysql-order-qa-data:
