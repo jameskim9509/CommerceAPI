@@ -50,6 +50,9 @@ eureka:
 
 logging:
   level:
-    org.hibernate.SQL: DEBUG
+    org.hibernate.SQL: INFO
     com.zerobase.orderApi: DEBUG
     com.netflix.discovery: INFO
+    # ADR-005 QA 디버그: 403 원인 추적
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
