@@ -3,4 +3,5 @@ include 'userApi'
 include 'Auth'
 include 'orderApi'
 include 'gateway'
+include 'eurekaServer'
 
