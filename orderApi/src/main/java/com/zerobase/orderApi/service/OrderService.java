@@ -55,8 +55,9 @@ public class OrderService {
                     .username(username)
                     .status(OrderStatus.PENDING)
                     .totalPrice(totalPrice)
-                    .items(buildOrderItems(orderCart))
                     .build();
+            // 양방향 매핑: 각 OrderItem 에 order 역참조 세팅 (NOT NULL FK 보장)
+            buildOrderItems(orderCart).forEach(order::addItem);
             orderRepository.save(order);
 
             redisClientService.put(customerId, curCart);
