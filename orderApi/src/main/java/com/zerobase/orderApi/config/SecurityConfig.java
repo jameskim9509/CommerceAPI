@@ -30,6 +30,8 @@ public class SecurityConfig {
                         auth -> auth
                                 .requestMatchers("/h2-console/**")
                                 .permitAll()
+                                .requestMatchers("/docs/**")
+                                .permitAll()
                                 .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

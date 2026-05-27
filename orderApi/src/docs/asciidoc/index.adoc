@@ -1,0 +1,79 @@
+= orderApi REST API 문서
+:doctype: book
+:icons: font
+:source-highlighter: highlightjs
+:toc: left
+:toclevels: 3
+:sectlinks:
+
+이 문서는 `orderApi` 모듈의 REST API 스펙을 정의한다. 모든 스니펫은 컨트롤러 테스트 (`*ControllerTest`) 가 통과해야 생성된다.
+
+== Customer Cart API (`/customer/cart`)
+
+=== POST `/customer/cart` — 장바구니에 상품 추가
+
+operation::customer-cart-add[snippets='http-request,http-response,curl-request']
+
+=== GET `/customer/cart` — 장바구니 조회
+
+operation::customer-cart-get[snippets='http-request,http-response,curl-request']
+
+=== PUT `/customer/cart` — 장바구니 수정
+
+operation::customer-cart-update[snippets='http-request,http-response,curl-request']
+
+=== POST `/customer/cart/order` — 장바구니 주문 (멱등성 키 필요)
+
+`Idempotency-Key` 헤더를 사용한 멱등성 처리 (ADR-001).
+
+operation::customer-cart-order[snippets='http-request,http-response,curl-request']
+
+== Customer Order API (`/customer/orders`)
+
+=== GET `/customer/orders/{orderId}` — 주문 상세 조회
+
+operation::customer-order-get[snippets='http-request,http-response,curl-request']
+
+== Seller Product API (`/seller/product`)
+
+=== POST `/seller/product` — 상품 등록
+
+operation::seller-product-add[snippets='http-request,http-response,curl-request']
+
+=== POST `/seller/product/item` — 상품 아이템 등록
+
+operation::seller-product-item-add[snippets='http-request,http-response,curl-request']
+
+=== PUT `/seller/product` — 상품 수정
+
+operation::seller-product-update[snippets='http-request,http-response,curl-request']
+
+=== PUT `/seller/product/item` — 상품 아이템 수정
+
+operation::seller-product-item-update[snippets='http-request,http-response,curl-request']
+
+=== DELETE `/seller/product?id={id}` — 상품 삭제
+
+operation::seller-product-delete[snippets='http-request,http-response,curl-request']
+
+=== DELETE `/seller/product/item?id={id}` — 상품 아이템 삭제
+
+operation::seller-product-item-delete[snippets='http-request,http-response,curl-request']
+
+== Search API (`/search`)
+
+=== GET `/search/product?name={name}` — 상품명 검색
+
+operation::search-product-by-name[snippets='http-request,http-response,curl-request']
+
+=== GET `/search/product/detail?productId={id}` — 상품 상세 조회
+
+operation::search-product-detail[snippets='http-request,http-response,curl-request']
+
+=== GET `/search/product/list?productId={ids}` — 상품 다건 조회
+
+operation::search-product-list[snippets='http-request,http-response,curl-request']
+
+=== GET `/search/item` — 상품 아이템 조건 검색
+
+operation::search-item-by-cond[snippets='http-request,http-response,curl-request']
