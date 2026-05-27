@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -24,11 +25,13 @@ import static org.mockito.BDDMockito.given;
 
 import java.time.LocalDate;
 
+import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@AutoConfigureRestDocs
 class CustomerControllerTest {
 
     @Autowired
@@ -69,7 +72,8 @@ class CustomerControllerTest {
                             .content(objectMapper.writeValueAsString(signupForm)))
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.message")
-                                .value("Verification Email이 발송되었습니다."));
+                                .value("Verification Email이 발송되었습니다."))
+                        .andDo(document("customer-signup"));
 
         Customer customer = customerRepository.findByEmail(signupForm.getEmail()).get();
 
@@ -80,7 +84,8 @@ class CustomerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message")
-                        .value("Verification에 성공하였습니다."));
+                        .value("Verification에 성공하였습니다."))
+                .andDo(document("customer-signup-verify"));
 
         //given
         SigninDto.Input loginForm = SigninDto.Input.builder()
@@ -95,6 +100,7 @@ class CustomerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginForm)))
                         .andExpect(status().isOk())
+                        .andDo(document("customer-login"))
                         .andReturn();
 
         //given
@@ -105,7 +111,8 @@ class CustomerControllerTest {
         mockMvc.perform(get(url)
                         .header("Authorization", "Bearer " + jwt))
                 .andExpect(status().isOk())
-                .andExpect(content().string("name님, test에 성공하였습니다."));
+                .andExpect(content().string("name님, test에 성공하였습니다."))
+                .andDo(document("customer-test"));
 
         //given
         ChangeBalanceDto.Input balanceForm =
@@ -124,6 +131,7 @@ class CustomerControllerTest {
                         .content(objectMapper.writeValueAsString(balanceForm)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.balance")
-                        .value("10000"));
+                        .value("10000"))
+                .andDo(document("customer-balance"));
     }
 }
