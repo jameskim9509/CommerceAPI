@@ -37,7 +37,7 @@ git config core.hooksPath .githooks
 13. **BaseEntity** 및 **JPA Auditing**기능을 활용하여 CRUD 이력 관리
 14. **Spring AOP** 기능을 활용해 **로깅 AOP** 구현, **custom error** 및 **error handler**를 통한 일관성 있는 예외 처리
 15. **Mock Object** 통한 서비스별 단위 테스트 및 **SpringBootTest**를 통한 서비스, 컨트롤러 통합 테스트 구현
-16. **swagger ui**를 통한 반응형 API 문서 제작
+16. **Spring REST Docs**(AsciiDoctor) 를 통해 컨트롤러 테스트로부터 생성되는 API 문서 제작
 17. **docker** 및 **dockerfile**을 활용하여 도커 이미지 생성 자동화
 18. **AWS** 및 **github action** 을 사용하여 **CI/CD** 자동화 구현
 
@@ -48,7 +48,7 @@ git config core.hooksPath .githooks
   * MYSQL Database
   * QueryDSL
   * Redis server
-  * Swagger
+  * Spring REST Docs
   * Docker
   * postman
 

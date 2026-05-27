@@ -1,0 +1,17 @@
+= orderApi REST API 문서
+:doctype: book
+:icons: font
+:source-highlighter: highlightjs
+:toc: left
+:toclevels: 3
+:sectlinks:
+
+이 문서는 `orderApi` 모듈의 REST API 스펙을 정의한다. 모든 스니펫은 컨트롤러 테스트 (`*ControllerTest`) 가 통과해야 생성된다.
+
+NOTE: 본 PR (#45) 에서는 `CustomerCartController` 의 GET 한 개만 RestDocs 로 문서화되어 있다. 나머지 엔드포인트는 후속 이슈로 점진 도입한다.
+
+== Cart API
+
+=== GET `/customer/cart` — 현재 로그인한 고객의 장바구니 조회
+
+operation::customer-cart-get[snippets='http-request,http-response,curl-request']

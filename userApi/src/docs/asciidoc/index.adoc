@@ -1,0 +1,49 @@
+= userApi REST API 문서
+:doctype: book
+:icons: font
+:source-highlighter: highlightjs
+:toc: left
+:toclevels: 3
+:sectlinks:
+
+이 문서는 `userApi` 모듈의 REST API 스펙을 정의한다. 모든 스니펫은 컨트롤러 테스트 (`*ControllerTest`) 가 통과해야 생성된다.
+
+== Customer API
+
+=== POST `/customer/signup` — 회원가입 (Verification Email 발송)
+
+operation::customer-signup[snippets='http-request,http-response,curl-request']
+
+=== PUT `/customer/signup/verify` — 이메일 인증 코드 검증
+
+operation::customer-signup-verify[snippets='http-request,http-response,curl-request']
+
+=== POST `/customer/login` — 로그인 (JWT 발급)
+
+operation::customer-login[snippets='http-request,http-response,curl-request']
+
+=== GET `/customer/test` — 인증 상태 확인 (CUSTOMER ROLE 필요)
+
+operation::customer-test[snippets='http-request,http-response,curl-request']
+
+=== POST `/customer/balance` — 예치금 입금 (CUSTOMER ROLE 필요)
+
+operation::customer-balance[snippets='http-request,http-response,curl-request']
+
+== Seller API
+
+=== POST `/seller/signup` — 판매자 회원가입
+
+operation::seller-signup[snippets='http-request,http-response,curl-request']
+
+=== PUT `/seller/signup/verify` — 판매자 이메일 인증
+
+operation::seller-signup-verify[snippets='http-request,http-response,curl-request']
+
+=== POST `/seller/login` — 판매자 로그인
+
+operation::seller-login[snippets='http-request,http-response,curl-request']
+
+=== GET `/seller/test` — 판매자 인증 상태 확인
+
+operation::seller-test[snippets='http-request,http-response,curl-request']

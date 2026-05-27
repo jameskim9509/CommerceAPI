@@ -29,7 +29,7 @@
 - [ ] DB 스키마 변경이 있다면 Flyway 마이그레이션 (`V_*.sql`) 추가
 - [ ] 두 모듈에 공유되는 DTO/Authority 등 변경 시 양쪽 모두 반영
 - [ ] 운영 yaml(`application.yml`)에 추가된 설정이 있다면 `application-test.yml` 및 `docker-compose.test.yml`에도 반영
-- [ ] 외부 API 추가/변경 시 Swagger 문서 갱신
+- [ ] 외부 API 추가/변경 시 REST Docs 컨트롤러 테스트 (`*ControllerTest`) 추가/갱신 (`/docs/index.html`)
 
 ## 스크린샷 / 로그 (선택)
 <!-- API 응답, UI 변경 등 첨부 -->
