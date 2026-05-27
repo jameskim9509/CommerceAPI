@@ -1,0 +1,40 @@
+# 루트 context (apps/web/Dockerfile 빌드용). 백엔드 모듈은 각자 ./userApi 등 별도 context 사용.
+
+# Java / Gradle backend (web 빌드 무관)
+userApi/
+orderApi/
+gateway/
+Auth/
+eurekaServer/
+**/build/
+**/.gradle/
+gradlew
+gradlew.bat
+gradle/
+
+# Node 산출물
+**/node_modules/
+**/dist/
+**/.turbo/
+
+# Git / IDE
+.git/
+.idea/
+.vscode/
+*.iml
+.claude/
+CLAUDE.md
+HELP.md
+
+# Docs / Infra / Test (web 빌드 무관)
+ADR/
+README.md
+qa/
+infra/
+.github/
+docker-compose*.yml
+
+# Secrets
+.env
+.env.*
+API_Key.txt
