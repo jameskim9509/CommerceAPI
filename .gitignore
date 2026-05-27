@@ -48,6 +48,8 @@ CLAUDE.md
 node_modules/
 dist/
 .turbo/
+.vite/
+*.tsbuildinfo
 *.log
 .pnpm-store/
 .env
