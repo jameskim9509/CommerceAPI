@@ -61,7 +61,12 @@ for i in "${!experiments[@]}"; do
     docker compose -f "$COMPOSE_FILE" exec -T mysql-order \
         mysql -uroot -proot orders < "$QA_DIR/seed/order-seed.sql"
 
-    # 5. k6 부하 테스트
+    # 5. 모니터 백그라운드 시작 (docker stats + MySQL Threads_running 5초 간격 캡쳐)
+    echo "[$LABEL] 모니터링 시작 ..."
+    bash "$QA_DIR/monitor-stats.sh" "$LABEL" &
+    MONITOR_PID=$!
+
+    # 6. k6 부하 테스트
     # threshold 위반 시 k6 가 exit code 99 반환 → 측정 자체는 성공이므로 || true 로 흡수
     echo "[$LABEL] k6 부하 테스트 시작 ..."
     TEST_START=$(date -u +%FT%TZ)
@@ -69,6 +74,11 @@ for i in "${!experiments[@]}"; do
         run --summary-export "/results/${LABEL}-k6-summary.json" \
         /scripts/load-test.js || true
     TEST_END=$(date -u +%FT%TZ)
+
+    # 7. 모니터 종료 (lock 파일 제거 + 프로세스 종료)
+    rm -f /tmp/qa-monitor.lock
+    wait "$MONITOR_PID" 2>/dev/null || true
+    echo "[$LABEL] 모니터링 종료"
 
     # 6. 부하 종료 후 안정화 대기 (Outbox 처리 + SAGA 완결)
     echo "[$LABEL] Outbox / SAGA 정착 대기 (60s) ..."

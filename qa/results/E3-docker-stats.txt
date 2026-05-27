@@ -1,1 +1,1 @@
-qa-orderapi-1	36.30%	366.1MiB / 1GiB
+qa-orderapi-1	19.05%	385.9MiB / 1GiB
