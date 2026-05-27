@@ -25,6 +25,8 @@ export function CustomerLayout() {
           {' | '}
           <Link to="/customer/orders">주문</Link>
           {' | '}
+          <Link to="/customer/balance">잔액</Link>
+          {' | '}
           <Link to="/seller">SELLER 모드 →</Link>
           <span style={{ float: 'right' }}>
             {user ? (

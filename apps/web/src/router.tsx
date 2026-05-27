@@ -2,8 +2,11 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { CustomerLayout } from './routes/customer/Layout'
 import { CustomerHome } from './routes/customer/Home'
 import { CustomerProducts } from './routes/customer/Products'
+import { CustomerProductDetail } from './routes/customer/ProductDetail'
 import { CustomerCart } from './routes/customer/Cart'
 import { CustomerOrders } from './routes/customer/Orders'
+import { CustomerOrderDetail } from './routes/customer/OrderDetail'
+import { CustomerBalance } from './routes/customer/Balance'
 import { CustomerLogin } from './routes/customer/Login'
 import { CustomerSignup } from './routes/customer/Signup'
 import { CustomerSignupVerify } from './routes/customer/SignupVerify'
@@ -31,6 +34,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'products/:id',
+        element: (
+          <ProtectedRoute role="CUSTOMER">
+            <CustomerProductDetail />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'cart',
         element: (
           <ProtectedRoute role="CUSTOMER">
@@ -43,6 +54,22 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute role="CUSTOMER">
             <CustomerOrders />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'orders/:orderId',
+        element: (
+          <ProtectedRoute role="CUSTOMER">
+            <CustomerOrderDetail />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'balance',
+        element: (
+          <ProtectedRoute role="CUSTOMER">
+            <CustomerBalance />
           </ProtectedRoute>
         ),
       },
