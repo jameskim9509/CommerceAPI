@@ -52,7 +52,7 @@ services:
   # ADR-003: Choreography SAGA 의 이벤트 브로커.
   # KRaft 모드(zookeeper 없이) 단일 노드. 토픽은 producer 발행 시 자동 생성.
   kafka:
-    image: bitnami/kafka:3.7
+    image: bitnamilegacy/kafka:3.7  # bitnami 가 namespace 를 옮겨 기존 태그는 docker.io 에서 사라짐
     container_name: commerce-kafka-test
     ports:
       - "9092:9092"
