@@ -15,10 +15,12 @@ RESULTS_DIR="qa/results"
 
 STATS_FILE="${RESULTS_DIR}/${LABEL}-stats.csv"
 MYSQL_FILE="${RESULTS_DIR}/${LABEL}-mysql.csv"
+EUREKA_FILE="${RESULTS_DIR}/${LABEL}-eureka.csv"
 
 # 헤더
 echo "timestamp,container,cpu_pct,mem_usage,mem_pct,net_io,block_io" > "$STATS_FILE"
 echo "timestamp,threads_connected,threads_running,questions,slow_queries" > "$MYSQL_FILE"
+echo "timestamp,app,instance_count,instance_ids" > "$EUREKA_FILE"
 
 touch "$LOCK"
 echo "[monitor] started for $LABEL, lock=$LOCK, interval=${INTERVAL}s"
@@ -43,6 +45,17 @@ while [ -f "$LOCK" ]; do
     " 2>/dev/null | tr -d '\n' || echo ",,,")
 
     echo "${TS},${METRICS}" >> "$MYSQL_FILE"
+
+    # 3) Eureka registry: 각 app 의 인스턴스 수 + instanceId 목록
+    # Accept: application/json 로 받아 jq 처럼 parse (없으면 grep 으로 대체)
+    EUREKA_JSON=$(curl -sfS -H "Accept: application/json" http://localhost:8761/eureka/apps 2>/dev/null || echo '{}')
+    for APP in ORDER-API USER-API GATEWAY; do
+        # 정규식으로 instanceId 추출 (간단한 multi-line grep)
+        IDS=$(echo "$EUREKA_JSON" | tr ',' '\n' | grep -A1 "\"name\":\"$APP\"" \
+              | grep -oE '"instanceId":"[^"]+"' | sed 's/"instanceId":"//;s/"$//' | tr '\n' '|' || echo '')
+        CNT=$(echo "$IDS" | tr '|' '\n' | grep -c '.' || echo 0)
+        echo "${TS},${APP},${CNT},${IDS}" >> "$EUREKA_FILE"
+    done
 
     sleep "$INTERVAL"
 done

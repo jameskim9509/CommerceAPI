@@ -68,9 +68,11 @@ for i in "${!experiments[@]}"; do
 
     # 6. k6 부하 테스트
     # threshold 위반 시 k6 가 exit code 99 반환 → 측정 자체는 성공이므로 || true 로 흡수
+    # ★ --no-deps: k6 의 depends_on=gateway 가 의존성 트리를 다시 띄우면서
+    #    위 --scale orderapi=N 을 default 1 로 되돌리는 버그 방지.
     echo "[$LABEL] k6 부하 테스트 시작 ..."
     TEST_START=$(date -u +%FT%TZ)
-    EXPERIMENT_LABEL="$LABEL" docker compose -f "$COMPOSE_FILE" run --rm k6 \
+    EXPERIMENT_LABEL="$LABEL" docker compose -f "$COMPOSE_FILE" run --rm --no-deps k6 \
         run --summary-export "/results/${LABEL}-k6-summary.json" \
         /scripts/load-test.js || true
     TEST_END=$(date -u +%FT%TZ)

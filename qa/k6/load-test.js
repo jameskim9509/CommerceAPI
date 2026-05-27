@@ -34,6 +34,29 @@ const instanceHits = new Counter('instance_hits');
 const idempotencyReplays = new Counter('idempotency_replay_attempts');
 const duplicateOrderResponses = new Counter('duplicate_order_responses');
 
+// ADR-005 LB 분배 검증: X-Instance-Id 별 별도 카운터를 동적으로 생성하기 어려우므로
+// 모든 hits 를 명시 라벨 4 개로 분기 집계. 라벨에 매핑 안 되는 인스턴스는 'other' 로.
+const hitsBackend1 = new Counter('hits_backend1');
+const hitsBackend2 = new Counter('hits_backend2');
+const hitsBackend3 = new Counter('hits_backend3');
+const hitsBackend4 = new Counter('hits_backend4');
+const hitsOther    = new Counter('hits_other');
+const instanceIdSeen = new Trend('instance_id_seen');  // dummy: not used but kept for compat
+
+function recordInstanceHit(instanceId) {
+    instanceHits.add(1);
+    if (!instanceId) { hitsOther.add(1); return; }
+    // 컨테이너 이름은 docker compose 가 부여 (예: qa-orderapi-1) — k6 가 받는 HOSTNAME 환경변수는 컨테이너 이름이 아니라 컨테이너 ID (12자리 hex).
+    // 여기서는 본 측정용으로 5분 동안 등장하는 unique instance id 분포 자체를 별도 객체에 누적 후 handleSummary 에서 dump.
+    if (!__ENV.__INSTANCE_MAP) { /* state lives in module scope below */ }
+    INSTANCE_HITS_MAP[instanceId] = (INSTANCE_HITS_MAP[instanceId] || 0) + 1;
+}
+
+// 모듈 스코프 객체 — VU 가 동시에 increment 해도 JS single-thread 라 안전.
+// 단 k6 는 VU 마다 별도 JS context 라 이 객체는 VU 별로 분리. handleSummary 는 main VU 에서 실행돼
+// VU 별 카운트는 손실됨 → 보조용. 정확한 분배는 별도 데이터 dump 필요.
+const INSTANCE_HITS_MAP = {};
+
 // VU 간 공유되는 사용자 풀
 const users = new SharedArray('users', function () {
     const arr = [];
@@ -176,9 +199,13 @@ export default function () {
     });
 
     // 5. 인스턴스 ID 집계 (분배 균등성 검증용)
-    const instanceId = orderRes.headers['X-Instance-Id'] || 'unknown';
+    // 헤더 이름 normalize (k6 는 lower-case 로 정규화함)
+    const instanceId = orderRes.headers['X-Instance-Id']
+                    || orderRes.headers['x-instance-id']
+                    || 'unknown';
     instanceHits.add(1, { instance: instanceId });
     orderLatency.add(orderRes.timings.duration, { instance: instanceId });
+    recordInstanceHit(instanceId);
 
     // 6. 5% 확률로 같은 Idempotency-Key 재시도 (멱등성 검증)
     if (Math.random() < 0.05) {
@@ -218,6 +245,9 @@ export function handleSummary(data) {
         },
         full_metrics: data.metrics,
     };
+
+    // ADR-005 LB 검증: 본 VU 의 INSTANCE_HITS_MAP 만 dump (전체 VU 합산은 k6 한계로 불가, 추세 확인용)
+    summary.instance_hits_partial = INSTANCE_HITS_MAP;
 
     return {
         [`/results/${EXPERIMENT_LABEL}-summary.json`]: JSON.stringify(summary, null, 2),
