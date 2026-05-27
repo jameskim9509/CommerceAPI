@@ -30,6 +30,9 @@ eureka:
 
 logging:
   level:
-    org.springframework.cloud.gateway: DEBUG
-    reactor.netty.http.client: DEBUG
+    org.springframework.cloud.gateway: INFO
+    reactor.netty.http.client: INFO
     com.netflix.discovery: INFO
+    # ADR-005 LB 분배 검증: 라우팅 결정 로그
+    org.springframework.cloud.loadbalancer: DEBUG
+    org.springframework.cloud.client.loadbalancer: DEBUG

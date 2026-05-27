@@ -31,10 +31,16 @@ public class Order extends BaseEntity {
     @Column(length = 500)
     private String failureReason;
 
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
-    @JoinColumn(name = "order_id")
+    // 양방향 매핑: OrderItem 측 @ManyToOne 이 order_id 를 관리한다.
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<OrderItem> items = new ArrayList<>();
+
+    /** Builder 외부에서 items 추가 시 양방향 동기화. */
+    public void addItem(OrderItem item) {
+        item.setOrder(this);
+        this.items.add(item);
+    }
 
     public void markPaid() {
         if (status == OrderStatus.PAID) return;

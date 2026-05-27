@@ -2,6 +2,8 @@ package com.zerobase.userApi.saga;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -18,6 +20,7 @@ public class ProcessedEvent {
 
     @Id
     @Column(name = "event_id", length = 36)
+    @JdbcTypeCode(SqlTypes.VARCHAR)   // Flyway V3 가 VARCHAR(36) 으로 생성한 컬럼과 매핑 일치
     private UUID eventId;
 
     @Id
