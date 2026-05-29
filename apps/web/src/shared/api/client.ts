@@ -20,10 +20,14 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY)
       const path = window.location.pathname
-      // login/signup 화면이 아니면 로그인 페이지로
+      // login/signup 화면이 아니면 모드별 로그인 페이지로
       const isAuthPage = path.includes('/login') || path.includes('/signup')
-      if (path.startsWith('/customer') && !isAuthPage) {
-        window.location.href = '/customer/login'
+      if (!isAuthPage) {
+        if (path.startsWith('/seller')) {
+          window.location.href = '/seller/login'
+        } else if (path.startsWith('/customer')) {
+          window.location.href = '/customer/login'
+        }
       }
     }
     return Promise.reject(err)

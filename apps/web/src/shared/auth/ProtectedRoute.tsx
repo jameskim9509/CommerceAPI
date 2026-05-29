@@ -16,7 +16,8 @@ export function ProtectedRoute({ children, role, loginPath = '/customer/login' }
   }
 
   if (role && !user.roles.includes(role)) {
-    return <Navigate to="/" replace />
+    // 권한 불일치 → 모드별 로그인 화면으로 (반대 모드 토큰으로 들어왔을 때)
+    return <Navigate to={loginPath} replace />
   }
 
   return <>{children}</>
