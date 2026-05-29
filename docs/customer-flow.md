@@ -250,4 +250,4 @@ sequenceDiagram
 
 - `ProductDto` 에 `sellerId` 가 없어 `AddProductCartForm.sellerId` 를 임시로 `0` 전송 (백엔드 응답 보완 후 정정 필요).
 - 백엔드에 주문 목록 API 가 없어 `/customer/orders` 는 ID 입력 폼만 제공.
-- SELLER 화면 미구현 (별도 PR).
+- SELLER 화면은 [#50](https://github.com/jameskim9509/CommerceAPI/issues/50) 으로 분리, `docs/seller-flow.md` 참조.
