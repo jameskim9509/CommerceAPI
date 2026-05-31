@@ -12,7 +12,13 @@ import { CustomerSignup } from './routes/customer/Signup'
 import { CustomerSignupVerify } from './routes/customer/SignupVerify'
 import { ProtectedRoute } from './shared/auth/ProtectedRoute'
 import { SellerLayout } from './routes/seller/Layout'
+import { SellerHome } from './routes/seller/Home'
+import { SellerLogin } from './routes/seller/Login'
+import { SellerSignup } from './routes/seller/Signup'
+import { SellerSignupVerify } from './routes/seller/SignupVerify'
 import { SellerProducts } from './routes/seller/Products'
+import { SellerProductNew } from './routes/seller/ProductNew'
+import { SellerProductEdit } from './routes/seller/ProductEdit'
 import { SellerOrders } from './routes/seller/Orders'
 
 export const router = createBrowserRouter([
@@ -79,9 +85,42 @@ export const router = createBrowserRouter([
     path: '/seller',
     element: <SellerLayout />,
     children: [
-      { index: true, element: <Navigate to="products" replace /> },
-      { path: 'products', element: <SellerProducts /> },
-      { path: 'orders', element: <SellerOrders /> },
+      { index: true, element: <SellerHome /> },
+      { path: 'login', element: <SellerLogin /> },
+      { path: 'signup', element: <SellerSignup /> },
+      { path: 'signup/verify', element: <SellerSignupVerify /> },
+      {
+        path: 'products',
+        element: (
+          <ProtectedRoute role="SELLER" loginPath="/seller/login">
+            <SellerProducts />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'products/new',
+        element: (
+          <ProtectedRoute role="SELLER" loginPath="/seller/login">
+            <SellerProductNew />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'products/:id/edit',
+        element: (
+          <ProtectedRoute role="SELLER" loginPath="/seller/login">
+            <SellerProductEdit />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'orders',
+        element: (
+          <ProtectedRoute role="SELLER" loginPath="/seller/login">
+            <SellerOrders />
+          </ProtectedRoute>
+        ),
+      },
     ],
   },
 ])

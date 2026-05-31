@@ -15,3 +15,12 @@ export async function getProductDetail(productId: number): Promise<ProductDto> {
   })
   return data
 }
+
+// 백엔드: GET /search/product/list?productId=1&productId=2&...
+export async function getProductListByIds(productIds: number[]): Promise<ProductDto[]> {
+  if (productIds.length === 0) return []
+  const search = new URLSearchParams()
+  productIds.forEach((id) => search.append('productId', String(id)))
+  const { data } = await api.get<ProductDto[]>(`/order/search/product/list?${search.toString()}`)
+  return data
+}

@@ -90,3 +90,65 @@ export interface OrderDto {
   failureReason: string | null
   items: OrderItem[]
 }
+
+// ===== seller (order-api: /seller/product, /seller/product/item) =====
+// 백엔드 DTO 클래스명: AddProductForm / AddProductItemForm / UpdateProductForm / UpdateProductItemForm
+
+export interface AddProductItemInput {
+  productId?: number // 신규 등록 시 비움
+  name: string
+  price: number
+  count: number
+}
+
+export interface AddProductInput {
+  name: string
+  description: string
+  addProductItemForms: AddProductItemInput[]
+}
+
+export interface AddProductItemOutput {
+  id: number
+  name: string
+  price: number
+  count: number
+}
+
+export interface AddProductOutput {
+  productId: number
+  sellerId: number
+  name: string
+  description: string
+  addProductItemForms: AddProductItemOutput[]
+}
+
+export interface UpdateProductItemInput {
+  id: number
+  productId: number
+  name: string
+  price: number
+  count: number
+}
+
+export interface UpdateProductInput {
+  productId: number
+  name: string
+  description: string
+  updateProductItemForms: UpdateProductItemInput[]
+}
+
+export interface UpdateProductItemOutput {
+  id: number
+  sellerId: number
+  name: string
+  price: number
+  count: number
+}
+
+export interface UpdateProductOutput {
+  id: number
+  sellerId: number
+  name: string
+  description: string
+  updatedProductItemList: UpdateProductItemOutput[]
+}
