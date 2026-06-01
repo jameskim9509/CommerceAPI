@@ -276,12 +276,12 @@ flowchart TB
 | eureka | Deployment | 1 | 250m / 256Mi | 500m / 512Mi | 레지스트리(단일, 아래 *남는 책임*) |
 | user-api | Deployment | 2 (2~6) | 500m / 512Mi | 1 / 1Gi | JWT 발급·결제 원장 |
 | order-api | Deployment | 3 (3~10) | 500m / 512Mi | 1 / 1Gi | 핫패스(주문) — 최다 replicas |
-| mysql-user | StatefulSet | 1 | 500m / 1Gi | 1 / 1Gi | PVC 10Gi · 운영: RDS |
-| mysql-order | StatefulSet | 1 | 500m / 1Gi | 1 / 1Gi | PVC 10Gi · 운영: RDS |
-| redis | Deployment | 1 | 100m / 128Mi | 250m / 256Mi | 캐시/장바구니 · 운영: ElastiCache |
-| kafka | StatefulSet | 1 | 500m / 1Gi | 1 / 1Gi | PVC 5Gi · KRaft · 운영: MSK |
+| mysql-user | StatefulSet | 1 | 250m / 512Mi | 1 / 1Gi | PVC 10Gi · test 전용 · 운영: RDS |
+| mysql-order | StatefulSet | 1 | 250m / 512Mi | 1 / 1Gi | PVC 10Gi · test 전용 · 운영: RDS |
+| redis | Deployment | 1 | 100m / 128Mi | 250m / 256Mi | test 전용 · 캐시/장바구니 · 운영: ElastiCache |
+| kafka | StatefulSet | 1 | 250m / 512Mi | 1 / 1Gi | PVC 5Gi · KRaft · test 전용 · 운영: MSK |
 
-- **형상별 차이**: 위 표는 **prod(EKS)** 기준이다. **test(로컬)** overlay 는 모든 앱을 replicas=1 · 축소 resources · HPA 생략으로 패치하고, mysql/redis/kafka 도 작은 자원으로 띄운다.
+- **형상별 차이**: 앱(gateway·eureka·user-api·order-api) 행은 **prod(EKS)** 기준이며, **test(로컬)** overlay 는 replicas=1 · HPA 생략으로 패치한다. infra(mysql·redis·kafka) 행은 **test 전용 in-cluster** 값이다 (prod 는 관리형이라 이 매니페스트에 StatefulSet 자체가 없음).
 - **JVM heap**: JRE 17 컨테이너 기본 `MaxRAMPercentage` 가 25% 라 1Gi limit 에서 heap 이 ~256Mi 로 과소 할당된다. 각 앱 pod 에 `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=70.0` 을 주입해 limit 의 70% 를 heap 으로 쓰게 한다(Dockerfile 변경 없이 env 로).
 - **HPA**: 목표 CPU 사용률 70%(requests 기준). 예) order-api requests 500m → pod 평균 350m 초과 시 scale-out. metrics-server 필요(*남는 책임*).
 - ADR-005 는 측정을 위해 **userApi 를 단일 인스턴스 고정 변수** 로 두었으나, 그것은 LB 효과 측정용 제약이었다. 운영 배포에서는 user-api 도 HA 를 위해 다중화(replicas 2 + HPA)한다.
