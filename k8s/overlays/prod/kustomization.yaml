@@ -1,0 +1,84 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# EKS 형상. 상태 저장소는 관리형(RDS/ElastiCache/MSK) — infra StatefulSet 을 포함하지 않는다.
+namespace: commerce
+
+resources:
+  - ../../base
+  - secret.yaml
+  - hpa.yaml
+  - ingress-alb.yaml
+
+# 이미지를 ECR 로 매핑 (CICD.yml 의 레지스트리). 태그는 배포 시 교체.
+# commerce-eureka 는 현재 CICD push 대상이 아님 → 파이프라인에 추가 필요(README 참고).
+images:
+  - name: commerce-eureka
+    newName: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com/commerce-eureka
+    newTag: latest
+  - name: commerce-gateway
+    newName: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com/commerce-gateway
+    newTag: latest
+  - name: commerce-userapi
+    newName: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com/commerce-userapi
+    newTag: latest
+  - name: commerce-orderapi
+    newName: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com/commerce-orderapi
+    newTag: latest
+
+patches:
+  # 1) ConfigMap: 프로파일 prod + Kafka/Redis 를 관리형 엔드포인트로
+  - path: configmap-patch.yaml
+
+  # 2) userApi DB host → user RDS 엔드포인트 (env 는 name 기준 병합)
+  - target:
+      kind: Deployment
+      name: user-api
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: user-api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: user-api
+                env:
+                  - name: MYSQL_HOST
+                    value: "REPLACE_WITH_USER_RDS_ENDPOINT"
+
+  # 3) orderApi DB host → orders RDS 엔드포인트
+  - target:
+      kind: Deployment
+      name: order-api
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: order-api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: order-api
+                env:
+                  - name: MYSQL_HOST
+                    value: "REPLACE_WITH_ORDER_RDS_ENDPOINT"
+
+  # 4) 모든 앱 컨테이너 imagePullPolicy → Always (ECR 최신 보장)
+  - target:
+      kind: Deployment
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+
+  # 5) 정적 replicas 제거 — replicas 는 HPA 가 소유. 제거하지 않으면 `kubectl apply` 재적용 시
+  #    Deployment.replicas 가 base 값(2/2/3)으로 덮여 HPA 스케일아웃이 리셋된다.
+  #    (eureka 는 HPA 없으나 replicas 생략 시 1 로 기본값 → 의도와 동일)
+  - target:
+      kind: Deployment
+    patch: |
+      - op: remove
+        path: /spec/replicas

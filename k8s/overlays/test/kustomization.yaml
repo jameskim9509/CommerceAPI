@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 로컬 k8s (minikube / kind / Docker Desktop) 형상.
+# = docker-compose.test.yml 의 쿠버네티스 판: 같은 test 프로파일, in-cluster 의존, 더미 자격증명.
+namespace: commerce
+
+resources:
+  - ../../base
+  # 상태 저장소를 클러스터 안에 직접 띄운다 (운영은 prod overlay 에서 관리형으로 대체)
+  - infra/mysql-user.yaml
+  - infra/mysql-order.yaml
+  - infra/redis.yaml
+  - infra/kafka.yaml
+  - secret.yaml
+
+# 단일 노드라 replicas 최소화, HPA 없음 (SPRING_PROFILES_ACTIVE 는 base 기본값 test 그대로)
+replicas:
+  - name: gateway
+    count: 1
+  - name: user-api
+    count: 1
+  - name: order-api
+    count: 1
+
+# 로컬 접근을 위해 gateway 를 NodePort 로 노출
+patches:
+  - path: patch-gateway-nodeport.yaml

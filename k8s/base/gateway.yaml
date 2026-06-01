@@ -1,0 +1,68 @@
+# 진입 프록시 (Spring Cloud Gateway). /user/** → lb://user-api, /order/** → lb://order-api
+# (Eureka 발견 기반 라우팅 — ADR-006 에서 유지). 외부 노출은 overlay 가 결정
+# (test=NodePort, prod=ALB Ingress).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels:
+    app: gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: gateway
+          image: commerce-gateway
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: commerce-config
+          lifecycle:
+            preStop:
+              # 종료 시 endpoint 전파 시간을 벌어 in-flight 라우팅 race 완화
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "768Mi"
+          # Actuator 미도입 → TCP probe (ADR-006 "남는 책임": actuator readiness 권장)
+          startupProbe:
+            tcpSocket:
+              port: 80
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            tcpSocket:
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 80
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  labels:
+    app: gateway
+spec:
+  selector:
+    app: gateway
+  ports:
+    - port: 80
+      targetPort: 80

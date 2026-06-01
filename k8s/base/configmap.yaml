@@ -1,0 +1,23 @@
+# 모든 앱이 공유하는 비밀 아닌 설정. 값은 test(로컬 in-cluster) 기준 기본값이며,
+# prod overlay 가 SPRING_PROFILES_ACTIVE / KAFKA / REDIS 호스트를 관리형 엔드포인트로 패치한다.
+# (DB host 는 앱마다 달라 Deployment env 로 둔다 — user-api.yaml / order-api.yaml 참고)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: commerce-config
+data:
+  # 프로파일 — prod overlay 가 "prod" 로 패치
+  SPRING_PROFILES_ACTIVE: "test"
+  # JVM — 컨테이너 메모리 limit 의 70% 를 heap 으로 (JRE17 기본 25% 과소할당 보정)
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
+  # 디스커버리 (Eureka 유지 — ADR-006). test/prod 모두 in-cluster eureka 사용
+  EUREKA_SERVER_URL: "http://eureka:8761/eureka/"
+  # 이벤트 브로커 — prod overlay 가 MSK 부트스트랩으로 패치
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  # 캐시/장바구니 — prod overlay 가 ElastiCache 엔드포인트로 패치
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  # DB 포트 (host 는 Deployment env; prod 는 RDS 로 패치)
+  MYSQL_PORT: "3306"
+  # orderApi → userApi 결제 (gateway 경유). test/prod 모두 in-cluster gateway
+  USER_API_URL: "http://gateway/user/customer"

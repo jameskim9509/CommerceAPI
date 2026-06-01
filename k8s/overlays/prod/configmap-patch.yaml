@@ -1,0 +1,12 @@
+# base commerce-config 에 병합(strategic merge) — 나열한 키만 덮어쓴다.
+# EUREKA_SERVER_URL(in-cluster eureka)·USER_API_URL(in-cluster gateway)·MYSQL_PORT 등은 base 유지.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: commerce-config
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  # MSK 부트스트랩 (실제 브로커 엔드포인트로 교체)
+  KAFKA_BOOTSTRAP_SERVERS: "REPLACE_WITH_MSK_BOOTSTRAP_BROKERS"
+  # ElastiCache 엔드포인트 (실제 주소로 교체)
+  REDIS_HOST: "REPLACE_WITH_ELASTICACHE_ENDPOINT"

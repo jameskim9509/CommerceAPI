@@ -1,0 +1,27 @@
+# 외부 진입 — AWS Load Balancer Controller 가 이 Ingress 로 ALB 를 프로비저닝.
+# 전체 경로(/user/**, /order/**)를 gateway 로 전달(경로 rewrite 없음 — gateway 가 라우팅).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: commerce
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    # gateway 에 actuator·'/' 핸들러가 없어 '/' 는 404 를 준다(라우트는 /user/**, /order/** 뿐).
+    # 포트 개방=정상으로 취급하기 위해 404 도 성공 코드로. actuator 도입 후
+    # healthcheck-path 를 /actuator/health/readiness 로, success-codes 를 200 으로 좁힐 것(남는 책임).
+    alb.ingress.kubernetes.io/success-codes: "200,404"
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
