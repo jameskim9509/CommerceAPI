@@ -19,7 +19,7 @@ k8s/
     ├── test/                   # 로컬 k8s · SPRING_PROFILES_ACTIVE=test
     │   ├── infra/              # mysql-user · mysql-order · redis · kafka (in-cluster)
     │   ├── secret.yaml         # 더미 자격증명
-    │   ├── patch-gateway-nodeport.yaml
+    │   ├── ingress-nginx.yaml  # 외부 진입 Ingress (ingressClassName: nginx)
     │   └── kustomization.yaml  # replicas=1, HPA 없음
     └── prod/                   # EKS · SPRING_PROFILES_ACTIVE=prod
         ├── secret.yaml         # placeholder (실제는 External Secrets)
@@ -44,6 +44,22 @@ kubectl kustomize k8s/overlays/prod
 ## test — 로컬 k8s (minikube / kind / Docker Desktop)
 
 `docker-compose.test.yml` 의 쿠버네티스 판. 상태 저장소(MySQL×2·Redis·Kafka)를 클러스터 안에 함께 띄운다.
+외부 진입은 gateway 를 ClusterIP 로 두고 **nginx Ingress** 로 노출한다 — prod 의 ALB Ingress 경로를 로컬에서 그대로 재현한다.
+
+### 사전 1회 — Ingress 진입 준비 (클러스터 애드온, kind 기준)
+
+`ingress-nginx` 컨트롤러와, kind 에서 LoadBalancer 의 EXTERNAL-IP 를 채워줄 `cloud-provider-kind` 를 설치한다.
+(다른 로컬 클러스터면 해당 LB 수단을 쓰거나, 아래 3) 의 port-forward 폴백을 사용)
+
+```bash
+# ingress-nginx 컨트롤러 — cloud 변형(컨트롤러 Service 가 type: LoadBalancer). 태그는 최신 stable 로 교체 가능
+# (ingress-nginx 네임스페이스에 설치 — commerce 와 분리된 공유 클러스터 애드온)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
+kubectl -n ingress-nginx wait --for=condition=Available deploy/ingress-nginx-controller --timeout=180s
+
+# cloud-provider-kind — LoadBalancer EXTERNAL-IP 프로비저너(클러스터 밖 호스트 docker 프록시). kind 전용
+go install sigs.k8s.io/cloud-provider-kind@latest   # 또는 GitHub releases 바이너리
+```
 
 ### 1) 이미지 빌드 + 로컬 클러스터에 로드
 
@@ -75,14 +91,31 @@ kubectl -n commerce get pods -w
 
 기동 순서는 별도 제어하지 않는다 — MySQL 이 늦으면 앱이 몇 번 재시작(CrashLoopBackOff) 후 정상화된다(startupProbe + restartPolicy).
 
-### 3) 접근
+### 3) 접근 — nginx Ingress 경유
+
+`cloud-provider-kind` 를 **관리자/elevated 권한**으로 실행해 두면(포그라운드, LoadBalancer 감시)
+컨트롤러 Service 에 EXTERNAL-IP 가 채워진다.
 
 ```bash
-kubectl -n commerce port-forward svc/gateway 8080:80
-# → http://localhost:8080/user/... , http://localhost:8080/order/...
+cloud-provider-kind        # Windows: "관리자 권한" 셸 / macOS·WSL2: sudo cloud-provider-kind
+kubectl -n ingress-nginx get svc ingress-nginx-controller   # EXTERNAL-IP 채워지는지 확인
 ```
 
-또는 NodePort(=test overlay 기본): `minikube service gateway -n commerce --url`.
+- **Linux**: EXTERNAL-IP 가 호스트에서 바로 닿는다 → `curl http://<EXTERNAL-IP>/user/...`
+- **Windows/Mac(Docker Desktop)**: docker 브리지 IP 가 호스트에서 안 닿아, cloud-provider-kind 가
+  `kindccm-…` 프록시 컨테이너를 띄워 **호스트 포트로 매핑**한다. EXTERNAL-IP 가 아니라 그 매핑 포트로 접근:
+
+```bash
+docker ps --filter name=kindccm --format "{{.Names}} {{.Ports}}"
+# 예: kindccm-...  0.0.0.0:53412->80/tcp  →  curl http://localhost:53412/user/...
+```
+
+폴백(클러스터·OS 무관, 고정 포트) — 컨트롤러로 port-forward:
+
+```bash
+kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80
+# → curl http://localhost:8080/user/... , http://localhost:8080/order/...
+```
 
 ### 4) 정리
 

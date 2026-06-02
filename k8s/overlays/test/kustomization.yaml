@@ -13,6 +13,8 @@ resources:
   - infra/redis.yaml
   - infra/kafka.yaml
   - secret.yaml
+  # 외부 진입 — gateway 는 ClusterIP(base) 유지, nginx Ingress 로 노출 (prod ALB 미러)
+  - ingress-nginx.yaml
 
 # 단일 노드라 replicas 최소화, HPA 없음 (SPRING_PROFILES_ACTIVE 는 base 기본값 test 그대로)
 replicas:
@@ -22,7 +24,3 @@ replicas:
     count: 1
   - name: order-api
     count: 1
-
-# 로컬 접근을 위해 gateway 를 NodePort 로 노출
-patches:
-  - path: patch-gateway-nodeport.yaml
