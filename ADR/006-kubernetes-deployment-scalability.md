@@ -292,7 +292,7 @@ flowchart TB
 
 - **형상별 차이**: 앱(gateway·eureka·user-api·order-api) 행은 **prod(EKS)** 기준이며, **test(로컬)** overlay 는 replicas=1 · HPA 생략으로 패치한다. infra(mysql·redis·kafka) 행은 **test 전용 in-cluster** 값이다 (prod 는 관리형이라 이 매니페스트에 StatefulSet 자체가 없음).
 - **JVM heap**: JRE 17 컨테이너 기본 `MaxRAMPercentage` 가 25% 라 1Gi limit 에서 heap 이 ~256Mi 로 과소 할당된다. 각 앱 pod 에 `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=70.0` 을 주입해 limit 의 70% 를 heap 으로 쓰게 한다(Dockerfile 변경 없이 env 로).
-- **HPA**: 목표 CPU 사용률 70%(requests 기준). 예) order-api requests 500m → pod 평균 350m 초과 시 scale-out. metrics-server 필요(*남는 책임*).
+- **HPA**: 목표 CPU 사용률 70%(requests 기준). 예) order-api requests 500m → pod 평균 350m 초과 시 scale-out. metrics-server 가 전제 — 미설치 시 HPA 가 `<unknown>/70%` 로 멈춰 scale-out 불가(설치 절차는 [`k8s/README.md`](../k8s/README.md) — prod 표준 설치, test 는 kind 자체서명 우회 `--kubelet-insecure-tls`).
 - ADR-005 는 측정을 위해 **userApi 를 단일 인스턴스 고정 변수** 로 두었으나, 그것은 LB 효과 측정용 제약이었다. 운영 배포에서는 user-api 도 HA 를 위해 다중화(replicas 2 + HPA)한다.
 
 ### 헬스 체크 (probe) — Actuator 미도입 상태 기준

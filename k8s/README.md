@@ -48,7 +48,7 @@ kubectl kustomize k8s/overlays/prod
 외부 진입은 **nginx Ingress** 가 `/ → web` 으로만 보내고(경로 분기·rewrite 없음), web 의 nginx 가 정적 SPA 를
 서빙하면서 `/api/**` 를 내부 gateway(ClusterIP)로 프록시한다 — prod 의 ALB Ingress 형상을 로컬에서 그대로 재현한다.
 
-### 사전 1회 — Ingress 진입 준비 (클러스터 애드온, kind 기준)
+### 사전 1회 — 클러스터 애드온 (Ingress · metrics-server, kind 기준)
 
 `ingress-nginx` 컨트롤러와, kind 에서 LoadBalancer 의 EXTERNAL-IP 를 채워줄 `cloud-provider-kind` 를 설치한다.
 (다른 로컬 클러스터면 해당 LB 수단을 쓰거나, 아래 3) 의 port-forward 폴백을 사용)
@@ -65,6 +65,18 @@ kubectl -n ingress-nginx wait --for=condition=Available deploy/ingress-nginx-con
 ```bash
 docker ps --filter name=kindccm --format "{{.Names}} {{.Ports}}"
 # 예: kindccm-...  0.0.0.0:53412->80/tcp  →  브라우저 http://localhost:53412/ · API http://localhost:53412/api/user/...
+```
+
+`metrics-server` — `kubectl top`(node·pod 리소스 사용량) 확인용. test overlay 는 HPA 가 없어 **필수는
+아니지만**, kind/Docker Desktop 은 kubelet 인증서가 자체서명이라 그대로 설치하면 메트릭 수집이 실패한다 →
+`--kubelet-insecure-tls` 를 넣어 설치한다(로컬 한정 — prod 에서는 쓰지 말 것).
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+# kind/Docker Desktop 자체서명 kubelet 인증서 우회 (로컬 전용)
+kubectl -n kube-system patch deploy metrics-server --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl -n kube-system wait --for=condition=Available deploy/metrics-server --timeout=120s
+# 확인: kubectl top nodes / kubectl -n commerce top pods
 ```
 
 ### 1) 이미지 빌드 + 로컬 클러스터에 로드
@@ -131,10 +143,20 @@ kubectl -n commerce delete pvc --all
 
 | 구성 | 용도 |
 |---|---|
-| metrics-server | HPA(CPU 메트릭) |
+| metrics-server | HPA(CPU 메트릭) — 없으면 HPA 가 `<unknown>/70%` 로 멈춰 scale-out 불가 |
 | AWS Load Balancer Controller | `ingress-alb.yaml` → ALB 프로비저닝 |
 | Cluster Autoscaler 또는 Karpenter | Node 층 자동 증감 |
 | EBS CSI Driver | (이 매니페스트는 prod 에 PVC 없음 — 관리형 DB 사용) |
+
+`metrics-server` 는 EKS 에 기본 설치되지 않으므로 HPA 적용 전에 먼저 설치한다(EKS 노드는 kubelet
+인증서가 유효해 `--kubelet-insecure-tls` 불필요 — test 의 로컬 우회와 다름). 나머지(ALB 컨트롤러·
+Autoscaler·CSI)는 클러스터 구성에 따라 별도 설치한다.
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl -n kube-system wait --for=condition=Available deploy/metrics-server --timeout=120s
+kubectl top nodes   # 메트릭 수집되는지 확인
+```
 
 ### 채워야 할 placeholder (`REPLACE_WITH_*`)
 
