@@ -1,0 +1,70 @@
+# 프런트엔드 SPA (apps/web). nginx 가 정적 파일을 서빙하고 /api/** 를 gateway 로 프록시한다
+# (이미지 내장 apps/web/nginx.conf: /api/ → http://gateway:80/, /api 접두사 제거 후 전달).
+# 외부 진입점은 이 web 한 곳 — Ingress 는 / → web 으로만 보내고(경로 분기 없음),
+# gateway 는 ClusterIP 내부 서비스로만 남는다(외부 직접 노출 안 함).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          image: commerce-web
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          # nginx.conf 가 gateway:80 을 하드코딩 → 추가 설정 주입 불필요(envFrom 없음)
+          lifecycle:
+            preStop:
+              # 종료 시 endpoint 전파 시간을 벌어 in-flight 요청 race 완화(롤아웃 무중단)
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          # 정적 nginx → "/" 가 index.html(200) 을 돌려주므로 HTTP probe 로 실질 헬스 확인
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            failureThreshold: 12
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    app: web
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80

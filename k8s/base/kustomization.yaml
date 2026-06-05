@@ -12,6 +12,7 @@ resources:
   - gateway.yaml
   - user-api.yaml
   - order-api.yaml
+  - web.yaml
 
 # 공통 라벨 (selector 에는 넣지 않아 향후 재적용 시 selector immutable 문제 회피)
 labels:
