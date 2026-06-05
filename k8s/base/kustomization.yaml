@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 모든 백엔드 워크로드는 commerce 네임스페이스에 배치.
+# (kafka.yaml 의 advertised listener 가 이 네임스페이스 FQDN 을 가정 — overlays/test)
+namespace: commerce
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - eureka.yaml
+  - gateway.yaml
+  - user-api.yaml
+  - order-api.yaml
+
+# 공통 라벨 (selector 에는 넣지 않아 향후 재적용 시 selector immutable 문제 회피)
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: commerce
+    includeSelectors: false

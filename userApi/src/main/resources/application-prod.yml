@@ -1,0 +1,47 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: user-api
+  datasource:
+    # application.yml(기본)의 하드코딩 RDS 주소를 env 로 외부화 (application-test.yml 과 동일 계약)
+    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    show-sql: false              # 운영: SQL 로깅 off (test 는 true)
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    clean-disabled: true         # 운영: flyway clean 금지 (test 는 false)
+
+mailgun:
+  apiKey: ${MAILGUN_APIKEY}
+  domain: ${MAILGUN_DOMAIN}
+
+# ADR-005: Eureka 클라이언트 등록 — ADR-006 에서 k8s 에서도 유지
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.cloud.client.hostname:${HOSTNAME:localhost}}:${server.port}
+
+logging:
+  level:
+    org.hibernate.SQL: WARN      # 운영: INFO/WARN (test 는 DEBUG)
+    com.zerobase.userApi: INFO
+    com.netflix.discovery: INFO

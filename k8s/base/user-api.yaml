@@ -1,0 +1,76 @@
+# 사용자/판매자 식별, JWT 발급, 잔액 원장, Mailgun 이메일 검증. MySQL(user) + Kafka.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-api
+  labels:
+    app: user-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-api
+  template:
+    metadata:
+      labels:
+        app: user-api
+    spec:
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: user-api
+          image: commerce-userapi
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: commerce-config
+            - secretRef:
+                name: commerce-secret
+          env:
+            # DB host/db 는 앱마다 다름. host 는 prod overlay 가 RDS 로 패치
+            - name: MYSQL_HOST
+              value: "mysql-user"
+            - name: MYSQL_DATABASE
+              value: "user"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          # Actuator 미도입 → TCP probe. startupProbe 가 부팅(최대 ~200s)을 보호하므로
+          # MySQL 미준비 시에도 liveness 가 조기에 죽이지 않는다 (이후 restartPolicy 로 재시도).
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            failureThreshold: 40
+            periodSeconds: 5
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 15
+---
+# ClusterIP. 단, gateway 는 lb://(Eureka) 로 pod IP 에 직접 라우팅하므로 이 Service 는
+# gateway 라우팅의 필수 경로가 아니다 (비-Eureka 접근/디버깅/관측용 안정 ID).
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-api
+  labels:
+    app: user-api
+spec:
+  selector:
+    app: user-api
+  ports:
+    - port: 8080
+      targetPort: 8080
