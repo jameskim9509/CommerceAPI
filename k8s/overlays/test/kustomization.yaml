@@ -24,3 +24,5 @@ replicas:
     count: 1
   - name: order-api
     count: 1
+  - name: web
+    count: 1

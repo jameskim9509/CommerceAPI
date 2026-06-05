@@ -25,6 +25,9 @@ images:
   - name: commerce-orderapi
     newName: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com/commerce-orderapi
     newTag: latest
+  - name: commerce-web
+    newName: 211125460515.dkr.ecr.ap-northeast-2.amazonaws.com/commerce-web
+    newTag: latest
 
 patches:
   # 1) ConfigMap: 프로파일 prod + Kafka/Redis 를 관리형 엔드포인트로

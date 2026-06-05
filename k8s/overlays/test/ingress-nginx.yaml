@@ -1,8 +1,8 @@
-# 외부 진입 — ingress-nginx 컨트롤러가 이 Ingress 규칙으로 gateway 에 라우팅.
+# 외부 진입 — ingress-nginx 컨트롤러가 이 Ingress 규칙으로 web 에 라우팅.
 # 컨트롤러 Service(type: LoadBalancer)의 EXTERNAL-IP 는 cloud-provider-kind
 # (클러스터 밖 호스트 docker 프록시)가 채운다 — 설치/접근은 k8s/README.md "test 3) 접근" 참고.
-# prod 의 ingress-alb.yaml 을 nginx 로 옮긴 것. 경로 rewrite 없음
-# (/user/**, /order/** 전체 경로를 gateway 로 전달 — gateway 가 라우팅).
+# prod 의 ingress-alb.yaml 을 nginx 로 옮긴 것. 경로 분기·rewrite 없음 — / 전체를 web 으로 보낸다.
+# web nginx 가 정적 SPA 를 서빙하고 /api/** 를 gateway 로 프록시(/api 제거). gateway 는 내부 ClusterIP.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -16,6 +16,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: gateway
+                name: web
                 port:
                   number: 80
