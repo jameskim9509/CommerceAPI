@@ -14,17 +14,18 @@ k8s/
 │   ├── gateway.yaml            # Deployment + Service
 │   ├── user-api.yaml           # Deployment + Service
 │   ├── order-api.yaml          # Deployment + Service
+│   ├── web.yaml                # Deployment + Service (nginx SPA + /api→gateway 프록시)
 │   └── kustomization.yaml
 └── overlays/
     ├── test/                   # 로컬 k8s · SPRING_PROFILES_ACTIVE=test
     │   ├── infra/              # mysql-user · mysql-order · redis · kafka (in-cluster)
     │   ├── secret.yaml         # 더미 자격증명
-    │   ├── ingress-nginx.yaml  # 외부 진입 Ingress (ingressClassName: nginx)
+    │   ├── ingress-nginx.yaml  # 외부 진입 Ingress (/ → web, web 이 /api→gateway)
     │   └── kustomization.yaml  # replicas=1, HPA 없음
     └── prod/                   # EKS · SPRING_PROFILES_ACTIVE=prod
         ├── secret.yaml         # placeholder (실제는 External Secrets)
         ├── configmap-patch.yaml# Kafka/Redis → 관리형 엔드포인트
-        ├── hpa.yaml            # gateway 2~6 · user-api 2~6 · order-api 3~10
+        ├── hpa.yaml            # web 2~4 · gateway 2~6 · user-api 2~6 · order-api 3~10
         ├── ingress-alb.yaml    # ALB Ingress
         └── kustomization.yaml  # ECR 이미지, RDS host 패치, imagePullPolicy=Always
 ```
@@ -41,10 +42,11 @@ kubectl kustomize k8s/overlays/prod
 
 ---
 
-## test — 로컬 k8s (minikube / kind / Docker Desktop)
+## test — 로컬 k8s (Docker Desktop - kind)
 
 `docker-compose.test.yml` 의 쿠버네티스 판. 상태 저장소(MySQL×2·Redis·Kafka)를 클러스터 안에 함께 띄운다.
-외부 진입은 gateway 를 ClusterIP 로 두고 **nginx Ingress** 로 노출한다 — prod 의 ALB Ingress 경로를 로컬에서 그대로 재현한다.
+외부 진입은 **nginx Ingress** 가 `/ → web` 으로만 보내고(경로 분기·rewrite 없음), web 의 nginx 가 정적 SPA 를
+서빙하면서 `/api/**` 를 내부 gateway(ClusterIP)로 프록시한다 — prod 의 ALB Ingress 형상을 로컬에서 그대로 재현한다.
 
 ### 사전 1회 — Ingress 진입 준비 (클러스터 애드온, kind 기준)
 
@@ -56,30 +58,38 @@ kubectl kustomize k8s/overlays/prod
 # (ingress-nginx 네임스페이스에 설치 — commerce 와 분리된 공유 클러스터 애드온)
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
 kubectl -n ingress-nginx wait --for=condition=Available deploy/ingress-nginx-controller --timeout=180s
+```
 
-# cloud-provider-kind — LoadBalancer EXTERNAL-IP 프로비저너(클러스터 밖 호스트 docker 프록시). kind 전용
-go install sigs.k8s.io/cloud-provider-kind@latest   # 또는 GitHub releases 바이너리
+**Docker Desktop**환경에서는 docker 브리지 IP 가 호스트에서 안 닿아, cloud-provider-kind 가 `kindccm-…` 프록시 컨테이너를 띄워 **호스트 포트로 매핑**한다. EXTERNAL-IP 가 아니라 그 매핑 포트로 접근:
+
+```bash
+docker ps --filter name=kindccm --format "{{.Names}} {{.Ports}}"
+# 예: kindccm-...  0.0.0.0:53412->80/tcp  →  브라우저 http://localhost:53412/ · API http://localhost:53412/api/user/...
 ```
 
 ### 1) 이미지 빌드 + 로컬 클러스터에 로드
 
-이미지 태그는 `base/` 의 이미지 이름과 일치해야 한다(`commerce-<module>:latest`).
+이미지 태그는 `base/` 의 이미지 이름과 일치해야 한다(`commerce-<module>:latest`). 아래는 **PowerShell** 기준.
 
-```bash
-# jar 빌드 (repo 루트)
-./gradlew clean build -x test
+```powershell
+# jar 빌드 (repo 루트). JAVA_HOME 은 JDK 17 을 가리켜야 함.
+# 테스트를 건너뛰면 orderApi REST Docs 스니펫(build/generated-snippets)이 없어
+# asciidoctor 가 실패하므로 함께 제외한다(CI 는 테스트를 먼저 돌려 회피).
+.\gradlew.bat clean build -x test -x asciidoctor
 
-# 이미지 빌드 (각 모듈의 Dockerfile 은 build/libs/<module>-0.1.jar 를 기대)
+# 백엔드 이미지 빌드 (각 모듈의 Dockerfile 은 build/libs/<module>-0.1.jar 를 기대)
 docker build -t commerce-eureka  ./eurekaServer
 docker build -t commerce-gateway ./gateway
 docker build -t commerce-userapi ./userApi
 docker build -t commerce-orderapi ./orderApi
 
-# 로컬 클러스터로 로드 (택1)
-# kind:
-for i in commerce-eureka commerce-gateway commerce-userapi commerce-orderapi; do kind load docker-image $i:latest; done
-# minikube:
-for i in commerce-eureka commerce-gateway commerce-userapi commerce-orderapi; do minikube image load $i:latest; done
+# 프런트엔드(web) 이미지 빌드 — monorepo 루트를 build context 로 (pnpm workspace 해결)
+docker build -t commerce-web -f apps/web/Dockerfile .
+
+# 로컬 클러스터(kind)로 로드 — Docker Desktop 의 kind 클러스터 이름은 'desktop'
+foreach ($i in 'commerce-eureka','commerce-gateway','commerce-userapi','commerce-orderapi','commerce-web') {
+    kind load docker-image "${i}:latest" --name desktop
+}
 ```
 
 ### 2) 배포
@@ -91,33 +101,19 @@ kubectl -n commerce get pods -w
 
 기동 순서는 별도 제어하지 않는다 — MySQL 이 늦으면 앱이 몇 번 재시작(CrashLoopBackOff) 후 정상화된다(startupProbe + restartPolicy).
 
-### 3) 접근 — nginx Ingress 경유
+> **스토리지(MySQL·Kafka)는 클러스터 기본 StorageClass 에 의존한다.** `infra/` 의 StatefulSet 은
+> `volumeClaimTemplates`(mysql 각 10Gi)만 선언하고 `storageClassName` 을 지정하지 않는다 →
+> **기본 SC 의 동적 프로비저너가 PV 를 자동 생성**해 바인딩한다(PV 매니페스트는 별도로 두지 않는다).
+> Docker Desktop(`hostpath`)·kind/minikube(`standard`)는 기본 SC 가 있어 그대로 동작하지만,
+> **기본 SC 가 없는 클러스터면 PVC 가 `Pending` 으로 멈춘다** — 이때는 기본 SC 를 지정하거나
+> `volumeClaimTemplates` 에 `storageClassName` 을 명시한다.
+>
+> ```bash
+> kubectl get storageclass             # 어느 SC 가 (default) 인지 확인
+> kubectl -n commerce get pvc          # data-mysql-user-0 등 STATUS 가 Bound 인지
+> ```
 
-`cloud-provider-kind` 를 **관리자/elevated 권한**으로 실행해 두면(포그라운드, LoadBalancer 감시)
-컨트롤러 Service 에 EXTERNAL-IP 가 채워진다.
-
-```bash
-cloud-provider-kind        # Windows: "관리자 권한" 셸 / macOS·WSL2: sudo cloud-provider-kind
-kubectl -n ingress-nginx get svc ingress-nginx-controller   # EXTERNAL-IP 채워지는지 확인
-```
-
-- **Linux**: EXTERNAL-IP 가 호스트에서 바로 닿는다 → `curl http://<EXTERNAL-IP>/user/...`
-- **Windows/Mac(Docker Desktop)**: docker 브리지 IP 가 호스트에서 안 닿아, cloud-provider-kind 가
-  `kindccm-…` 프록시 컨테이너를 띄워 **호스트 포트로 매핑**한다. EXTERNAL-IP 가 아니라 그 매핑 포트로 접근:
-
-```bash
-docker ps --filter name=kindccm --format "{{.Names}} {{.Ports}}"
-# 예: kindccm-...  0.0.0.0:53412->80/tcp  →  curl http://localhost:53412/user/...
-```
-
-폴백(클러스터·OS 무관, 고정 포트) — 컨트롤러로 port-forward:
-
-```bash
-kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80
-# → curl http://localhost:8080/user/... , http://localhost:8080/order/...
-```
-
-### 4) 정리
+### 3) 정리
 
 ```bash
 kubectl delete -k k8s/overlays/test
@@ -165,7 +161,7 @@ kubectl -n commerce get ingress commerce
 
 ## 주의 / 남는 작업 (ADR-006 "남는 책임")
 
-- **commerce-eureka 이미지** — 현재 CICD 는 gateway/userapi/orderapi 3개만 ECR push 한다. eureka 이미지도 push 단계 추가 필요(또는 디스커버리를 k8s native 로 전환 — 별도 ADR).
+- **commerce-eureka · commerce-web 이미지** — 현재 CICD 는 gateway/userapi/orderapi 3개만 ECR push 한다. prod overlay 가 참조하는 eureka·web 이미지도 push 단계 추가 필요(eureka 는 디스커버리를 k8s native 로 전환 시 대체 — 별도 ADR).
 - **Eureka 유지** — k8s Service+DNS 가 디스커버리/LB 를 native 제공하므로 Eureka 는 중복이나, ADR-005·`qa/` 자산 보존을 위해 유지. gateway 는 `lb://`(Eureka) 로 pod IP 에 직접 라우팅한다.
 - **probe 는 TCP** — actuator 미도입이라 포트 개방만 확인. DB/Kafka/Redis 연결을 반영하는 readiness 는 `spring-boot-starter-actuator` + `/actuator/health/{readiness,liveness}` 도입 후 권장.
 - **Kafka 단일 노드** — KRaft 1 브로커는 SPOF. 운영은 MSK.
