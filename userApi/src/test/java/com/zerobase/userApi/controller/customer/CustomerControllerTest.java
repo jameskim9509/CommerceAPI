@@ -6,7 +6,7 @@ import com.zerobase.userApi.dto.ChangeBalanceDto;
 import com.zerobase.userApi.dto.SigninDto;
 import com.zerobase.userApi.dto.SignupDto;
 import com.zerobase.userApi.repository.customer.CustomerRepository;
-import com.zerobase.userApi.service.MailgunClient;
+import com.zerobase.userApi.service.GmailClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,12 +16,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willDoNothing;
 
 import java.time.LocalDate;
 
@@ -44,11 +43,11 @@ class CustomerControllerTest {
     private CustomerRepository customerRepository;
 
     @MockBean
-    private MailgunClient mailgunClient;
+    private GmailClient gmailClient;
 
     @BeforeEach
-    void stubMailgun() {
-        given(mailgunClient.sendEmail(any())).willReturn(ResponseEntity.ok().build());
+    void stubGmail() {
+        willDoNothing().given(gmailClient).sendEmail(any());
     }
 
     @DisplayName("회원가입 및 검증, 로그인 후 예치금 입금 성공")

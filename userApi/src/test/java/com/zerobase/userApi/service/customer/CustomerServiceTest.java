@@ -2,21 +2,20 @@ package com.zerobase.userApi.service.customer;
 
 import com.zerobase.userApi.dto.SendMailDto;
 import com.zerobase.userApi.dto.SignupDto;
-import com.zerobase.userApi.service.MailgunClient;
+import com.zerobase.userApi.service.GmailClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willDoNothing;
 
 import java.time.LocalDate;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,11 +26,11 @@ class CustomerServiceTest {
     private CustomerService service;
 
     @MockBean
-    private MailgunClient mailgunClient;
+    private GmailClient gmailClient;
 
     @BeforeEach
-    void stubMailgun() {
-        given(mailgunClient.sendEmail(any())).willReturn(ResponseEntity.ok().build());
+    void stubGmail() {
+        willDoNothing().given(gmailClient).sendEmail(any());
     }
 
     @DisplayName("signUp 성공")
@@ -65,8 +64,6 @@ class CustomerServiceTest {
                         .text("blablabla...")
                         .build();
 
-        ResponseEntity response = service.sendEmail(form);
-
-        assertEquals(HttpStatusCode.valueOf(200), response.getStatusCode());
+        assertDoesNotThrow(() -> service.sendEmail(form));
     }
 }
