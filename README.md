@@ -28,7 +28,7 @@ git config core.hooksPath .githooks
 ( + **@EntityGraph**를 사용하여 즉시 로딩이 필요한 행에 대해 **fetch join** 수행 )
 5. 사용자의 비밀번호를 **Spring Security**의 **Password Encoder**를 통해 암호화된 비밀번호로 저장
 6. 운영 환경과 테스트 환경의 DB를 **MYSQL**서버와 **H2 Embeded**서버로 분리
-7. 회원가입시 **mailgun**및 **open feign client**를 활용하여 **이메일 검증** 시스템 구현
+7. 회원가입시 **Gmail SMTP(App Password)** 및 **Spring Mail(JavaMailSender)** 을 활용하여 **이메일 검증** 시스템 구현
 8. 로그인 시 **Spring Security** 및 **JWT 토큰**을 활용하여 사용자 및 역할( 판매자, 구매자 )별 호출 url 제한
 9. **다대일 양방향 매핑**을 사용하여 상품군과 상품 아이템 리스트의 연관관계 매핑 구현
 10. **open feign client**를 사용하여 ORDER API에서 USER API로 결제 요청 및 결제 수행 기능 구현
