@@ -35,6 +35,25 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
+  # ADR-007: Gmail SMTP(App Password) 이메일 발송. 자격증명은 환경변수(MAIL_USERNAME / MAIL_PASSWORD)로만 주입한다.
+  #          로컬은 .vscode/.env.local (VS Code launch.json envFile, 커밋 금지) 에서 주입.
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+        # 회원가입 트랜잭션이 SMTP 지연에 무한정 묶이지 않도록 타임아웃(ms)
+        connectiontimeout: 5000
+        timeout: 5000
+        writetimeout: 5000
+
 # ADR-005: Eureka 클라이언트 등록
 eureka:
   client:
