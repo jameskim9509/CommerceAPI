@@ -105,8 +105,8 @@ services:
       MYSQL_DATABASE: user
       MYSQL_USER: commerce
       MYSQL_PASSWORD: commerce
-      MAILGUN_APIKEY: ${MAILGUN_APIKEY:-test-key}
-      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN:-test.local}
+      MAIL_USERNAME: ${MAIL_USERNAME:-test@example.com}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-test-password}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # ADR-005: Eureka 클라이언트 등록 대상
       EUREKA_SERVER_URL: http://eureka:8761/eureka/

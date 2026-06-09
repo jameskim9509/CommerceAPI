@@ -164,7 +164,7 @@ kubectl top nodes   # 메트릭 수집되는지 확인
 |---|---|
 | `overlays/prod/kustomization.yaml` | user-api / order-api `MYSQL_HOST` → 각 RDS 엔드포인트 |
 | `overlays/prod/configmap-patch.yaml` | `KAFKA_BOOTSTRAP_SERVERS`(MSK), `REDIS_HOST`(ElastiCache) |
-| `overlays/prod/secret.yaml` | `MYSQL_USER/PASSWORD`, `MAILGUN_APIKEY/DOMAIN` (가급적 External Secrets 로 대체) |
+| `overlays/prod/secret.yaml` | `MYSQL_USER/PASSWORD`, `MAIL_USERNAME/PASSWORD` (가급적 External Secrets 로 대체) |
 | `overlays/prod/kustomization.yaml` `images:` | ECR 레지스트리/태그 |
 
 > **시크릿**: `secret.yaml` 평문 커밋은 피하고 External Secrets Operator / AWS Secrets Manager / SSM 로 주입 권장.

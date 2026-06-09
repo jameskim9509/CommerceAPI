@@ -25,9 +25,6 @@ dependencyManagement {
 }
 
 dependencies {
-    //cloud
-    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign:4.1.2'
-
     // ADR-005: Eureka 클라이언트 등록
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
@@ -49,6 +46,9 @@ dependencies {
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
 
+    // ADR-007: Gmail SMTP 이메일 발송 (JavaMailSender)
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+
     //security
     implementation 'org.springframework.boot:spring-boot-starter-security'
 
@@ -62,8 +62,6 @@ dependencies {
 }
 
 test {
-    systemProperty "mailgun.apiKey", System.getProperty("mailgun.apiKey")
-    systemProperty "mailgun.domain", System.getProperty('mailgun.domain')
     outputs.dir snippetsDir
 }
 

@@ -61,7 +61,7 @@ jobs:
   
           run: |
             chmod +x ./gradlew
-            ./gradlew test -Dmailgun.domain=${{secrets.MAILGUN_DOMAIN}} -Dmailgun.apiKey=${{secrets.MAILGUN_APIKEY}} -Dspring.redis.host=redis -Dspring.redis.port=6379
+            ./gradlew test -Dspring.redis.host=redis -Dspring.redis.port=6379
             ./gradlew clean build -x test
 
             cd ./gateway
@@ -102,7 +102,7 @@ jobs:
               sudo docker stop ${{ env.ECR_REPOSITORY }} || true
               sudo docker rm ${{ env.ECR_REPOSITORY }} || true
               sudo docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-              sudo docker run -d --name ${{ env.ECR_REPOSITORY }} -e MAILGUN_APIKEY=${{ secrets.MAILGUN_APIKEY }} -e MAILGUN_DOMAIN=${{ secrets.MAILGUN_DOMAIN }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+              sudo docker run -d --name ${{ env.ECR_REPOSITORY }} -e MAIL_USERNAME=${{ secrets.MAIL_USERNAME }} -e MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }} -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
         - name: pull image on order API EC2
           env: 

@@ -8,12 +8,10 @@ import com.zerobase.userApi.exception.CustomException;
 import com.zerobase.userApi.exception.ErrorCode;
 import com.zerobase.userApi.repository.customer.CustomerRepository;
 import com.zerobase.userApi.security.customer.CustomerDetails;
-import com.zerobase.userApi.service.MailgunClient;
+import com.zerobase.userApi.service.GmailClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,7 +26,7 @@ import java.time.LocalDateTime;
 public class CustomerService implements UserDetailsService {
 
     private final CustomerRepository customerRepository;
-    private final MailgunClient mailgunClient;
+    private final GmailClient gmailClient;
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
@@ -73,15 +71,9 @@ public class CustomerService implements UserDetailsService {
         return customerRepository.findByEmail(email).isPresent();
     }
 
-    public ResponseEntity sendEmail(SendMailDto form)
+    public void sendEmail(SendMailDto form)
     {
-        ResponseEntity response = mailgunClient.sendEmail(form);
-        if(response.getStatusCode() != HttpStatusCode.valueOf(200))
-        {
-            log.error("statusCode: {}, Body: {}", response.getStatusCode(), response.getBody());
-            throw new CustomException(ErrorCode.SEND_EMAIL_ERROR);
-        }
-        else return response;
+        gmailClient.sendEmail(form);
     }
 
     @Transactional
