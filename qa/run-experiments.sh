@@ -54,12 +54,17 @@ for i in "${!experiments[@]}"; do
     echo "[$LABEL] 서비스 ready 대기 ..."
     sleep 60   # JVM 부팅 + Eureka 등록 + Gateway registry fetch
 
-    # 4. 시드 SQL 실행
-    echo "[$LABEL] 시드 SQL 실행 ..."
+    # 4. 시드 SQL 실행 — functional 베이스(seller 1·2 점유) → load(k6) 레이어 순서.
+    #    functional 이 먼저 들어가야 load 의 seller_id=1 이 유효하다.
+    echo "[$LABEL] 시드 SQL 실행 (functional → load) ..."
     docker compose -f "$COMPOSE_FILE" exec -T mysql-user \
-        mysql -uroot -proot user < "$QA_DIR/seed/user-seed.sql"
+        mysql -uroot -proot user < "$QA_DIR/seed/functional/user.sql"
     docker compose -f "$COMPOSE_FILE" exec -T mysql-order \
-        mysql -uroot -proot orders < "$QA_DIR/seed/order-seed.sql"
+        mysql -uroot -proot orders < "$QA_DIR/seed/functional/order.sql"
+    docker compose -f "$COMPOSE_FILE" exec -T mysql-user \
+        mysql -uroot -proot user < "$QA_DIR/seed/load/user.sql"
+    docker compose -f "$COMPOSE_FILE" exec -T mysql-order \
+        mysql -uroot -proot orders < "$QA_DIR/seed/load/order.sql"
 
     # 5. 모니터 백그라운드 시작 (docker stats + MySQL Threads_running 5초 간격 캡쳐)
     echo "[$LABEL] 모니터링 시작 ..."

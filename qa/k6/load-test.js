@@ -1,9 +1,10 @@
 // =============================================================================
 // ADR-005 시나리오 3: orderApi 다중 인스턴스 부하 분산 효과 측정
 //
-// 전제 (qa/seed/*.sql 로 시드 완료):
-//   - userApi DB: customer{1..1000}@qa.test, password "password", verify=true, balance=10_000_000
-//   - orderApi DB: 100 products × 5 product_items (재고 1_000_000 각각)
+// 전제 (qa/seed/functional → load 순서로 시드 완료):
+//   - userApi DB: customer{1..1000}@qa.test, password "password", verify=true, balance=10_000_000  (load/user.sql)
+//   - orderApi DB: 100 products × 5 product_items (재고 1_000_000 각각, id 1..500)               (load/order.sql)
+//   - seller_id=1 은 functional/user.sql 이 만든 seller1 (functional 이 먼저 주입됨)
 //
 // 워크로드:
 //   - ramping-vus 0 → 50 (warm-up 30s) → 200 (ramp 1m) → 200 (steady 3m) → 0 (cool-down 30s)
@@ -111,7 +112,7 @@ function login(user) {
     return token;
 }
 
-// 시드 SQL 의 product/item 이름 규칙 (qa/seed/order-seed.sql 와 일치해야 refreshCart 가 메시지 추가하지 않음)
+// 시드 SQL 의 product/item 이름 규칙 (qa/seed/load/order.sql 와 일치해야 refreshCart 가 메시지 추가하지 않음)
 function pad3(n) { return ('000' + n).slice(-3); }
 function productName(productId) { return `QaProduct${pad3(productId)}`; }
 function productDescription(productId) { return `Product description ${productId}`; }

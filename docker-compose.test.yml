@@ -192,6 +192,38 @@ services:
           memory: 2G
     networks: [commerce-test]
 
+  # 기능/시나리오 테스트용 베이스 시드 자동 주입 (1회용).
+  #   스키마는 Flyway(앱 부팅 시)가 만들므로 MySQL initdb 로는 못 넣는다 →
+  #   앱 마이그레이션으로 테이블이 생길 때까지 폴링한 뒤 functional 시드를 주입한다.
+  #   멱등(DELETE+INSERT)이라 재기동/재실행에 안전. 영속 볼륨이 살아 있으면 데이터는 유지된다.
+  db-seed:
+    image: mysql:8.0
+    container_name: commerce-db-seed-test
+    restart: "no"
+    depends_on:
+      mysql-user:
+        condition: service_healthy
+      mysql-order:
+        condition: service_healthy
+      userapi:
+        condition: service_started
+      orderapi:
+        condition: service_started
+    volumes:
+      - ./qa/seed/functional:/seed:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "[db-seed] waiting for Flyway-created tables ..."
+        until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        echo "[db-seed] seeding functional fixtures ..."
+        mysql -h mysql-user  -uroot -proot user   < /seed/user.sql
+        mysql -h mysql-order -uroot -proot orders < /seed/order.sql
+        echo "[db-seed] done."
+    networks: [commerce-test]
+
   # apps/web SPA 를 nginx 컨테이너로 서빙. /api → gateway:80 프록시 (commerce-test 네트워크).
   #   docker compose -f docker-compose.test.yml up --build web  → http://localhost:5173
   # build context 는 monorepo 루트 (pnpm workspace 해결을 위해).

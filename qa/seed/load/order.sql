@@ -1,27 +1,26 @@
 -- =============================================================================
--- ADR-005 시나리오 3 QA 시드 - orderApi DB (orders)
+-- ADR-005 시나리오 3 부하(k6) 시드 - orderApi DB (orders)
 -- 100 개 product, 각각 ProductItem 5 개 (총 500 product_items)
 -- 재고는 1_000_000 (재고 부족이 부하 시그널을 오염시키지 않도록)
 --
 -- 가격: 1000 ~ 5000 원 (5 단계)
--- seller_id: userApi 의 seller@qa.test 의 id (외부 키 — 모듈 간 약결합)
+-- seller_id: functional/user.sql 이 만든 seller1 의 PK(=1). functional 이 먼저 주입된다.
+-- product / product_item id = 1..100 / 1..500 강제 INSERT (load-test.js 의 산술 매핑과 일치).
+--   functional/order.sql 은 9001+ 를 쓰므로 이 범위와 겹치지 않는다.
+-- cleanup 은 'QaProduct%' (자기 행)만 — functional 의 'QA-%' 는 건드리지 않는다.
 -- =============================================================================
 
--- 기존 시드 정리
-DELETE FROM order_items WHERE order_id IN (SELECT id FROM (SELECT id FROM orders WHERE username LIKE 'customer%@qa.test') AS t);
-DELETE FROM orders WHERE username LIKE 'customer%@qa.test';
-DELETE FROM product_item WHERE seller_id IN (SELECT id FROM (SELECT id FROM product WHERE name LIKE 'QaProduct%') AS t);
+USE orders;
+
+-- 기존 부하 시드 정리 (customer<digits> 주문 + QaProduct 상품만)
+DELETE FROM order_items WHERE order_id IN (SELECT id FROM (SELECT id FROM orders WHERE username REGEXP '^customer[0-9]+@qa\\.test$') AS t);
+DELETE FROM orders WHERE username REGEXP '^customer[0-9]+@qa\\.test$';
+DELETE FROM product_item WHERE name LIKE 'QaProduct%';
 DELETE FROM product WHERE name LIKE 'QaProduct%';
 DELETE FROM outbox_events WHERE topic LIKE 'qa-%' OR created_at < NOW() - INTERVAL 30 DAY;
 DELETE FROM processed_events WHERE consumer_name LIKE 'qa-%';
 
--- AUTO_INCREMENT 리셋 (반복 시드 시 ID 가 1..100/500 으로 안정되게)
-ALTER TABLE product AUTO_INCREMENT = 1;
-ALTER TABLE product_item AUTO_INCREMENT = 1;
-
--- seller_id 는 userApi.seller 의 id 를 가정.
--- docker-compose 환경에서는 시드 순서를 userApi 시드 -> orderApi 시드 로 보장.
--- 본 스크립트는 단순화를 위해 seller_id=1 로 가정 (userApi 시드의 첫 seller).
+-- seller_id 는 functional 이 만든 seller1 (id=1) 을 재사용.
 SET @seller_id = 1;
 
 -- 100 products. 명시적 ID 사용으로 product.id = n 보장.

@@ -178,6 +178,37 @@ services:
           memory: 768M
     networks: [commerce-qa]
 
+  # 기능/시나리오 베이스 시드 자동 주입 (1회용).
+  #   스키마는 Flyway(앱 부팅 시)가 만들므로 테이블이 생길 때까지 폴링 후 functional 시드 주입.
+  #   run-experiments*.sh 는 up 의 서비스 목록에서 db-seed 를 제외하므로 부하 실험엔 영향 없고,
+  #   직접 `docker compose -f qa/docker-compose.qa.yml up -d` 하면 functional 시드가 자동 주입된다.
+  db-seed:
+    image: mysql:8.0
+    restart: "no"
+    depends_on:
+      mysql-user:
+        condition: service_healthy
+      mysql-order:
+        condition: service_healthy
+      userapi:
+        condition: service_started
+      orderapi:
+        condition: service_started
+    volumes:
+      - ./seed/functional:/seed:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "[db-seed] waiting for Flyway-created tables ..."
+        until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        echo "[db-seed] seeding functional fixtures ..."
+        mysql -h mysql-user  -uroot -proot user   < /seed/user.sql
+        mysql -h mysql-order -uroot -proot orders < /seed/order.sql
+        echo "[db-seed] done."
+    networks: [commerce-qa]
+
   # k6 부하 발생기. 각 실험마다 별도로 실행: docker compose run k6
   k6:
     image: grafana/k6:0.51.0
