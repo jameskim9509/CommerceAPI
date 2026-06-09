@@ -35,7 +35,12 @@ out/
 /.nb-gradle/
 
 ### VS Code ###
-.vscode/
+# 디렉터리 전체는 무시하되, 공유용 실행 설정(launch.json)과 예시 템플릿만 추적한다.
+.vscode/*
+!.vscode/launch.json
+!.vscode/.env.local.example
+# 실제 메일 자격증명(App Password)은 로컬에만 — 커밋 금지 (ADR-007)
+.vscode/.env.local
 
 ### api Key ###
 API_Key.txt
