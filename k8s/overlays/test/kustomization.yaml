@@ -13,8 +13,22 @@ resources:
   - infra/redis.yaml
   - infra/kafka.yaml
   - secret.yaml
+  # Flyway 마이그레이션 후 기능/시나리오 베이스 시드를 주입하는 1회용 Job
+  - infra/db-seed.yaml
   # 외부 진입 — gateway 는 ClusterIP(base) 유지, nginx Ingress 로 노출 (prod ALB 미러)
   - ingress-nginx.yaml
+
+# db-seed Job 이 마운트할 시드 SQL. 단일 출처는 qa/seed/functional/ (compose 와 공유).
+#  - 트리 밖(../../../) 파일 참조라 standalone kustomize 는 --load-restrictor LoadRestrictionsNone 필요:
+#      kustomize build k8s/overlays/test --load-restrictor LoadRestrictionsNone | kubectl apply -f -
+#  - disableNameSuffixHash: Job 의 configMap 참조 이름(db-seed-sql)을 고정 (재적용 예측 가능).
+configMapGenerator:
+  - name: db-seed-sql
+    files:
+      - user.sql=../../../qa/seed/functional/user.sql
+      - order.sql=../../../qa/seed/functional/order.sql
+    options:
+      disableNameSuffixHash: true
 
 # 단일 노드라 replicas 최소화, HPA 없음 (SPRING_PROFILES_ACTIVE 는 base 기본값 test 그대로)
 replicas:

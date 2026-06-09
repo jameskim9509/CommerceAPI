@@ -1,0 +1,49 @@
+# 기능/시나리오 베이스 시드 주입 Job (로컬 test 전용. prod overlay 에는 없음 — RDS).
+#  - 스키마는 user-api / order-api 의 Flyway 가 부팅 시 만든다 → MySQL 자체로는 시드 못 넣음.
+#    테이블이 생길 때까지 폴링한 뒤 functional 시드를 주입한다 (docker-compose 의 db-seed 서비스와 동형).
+#  - 시드 SQL 은 qa/seed/functional/ 을 단일 출처로 configMapGenerator(kustomization.yaml)가 ConfigMap 으로 생성.
+#  - 멱등(DELETE+INSERT). 재적용 시 Job 은 spec 불변이라 `kubectl delete job db-seed -n commerce` 후 재적용.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-seed
+  labels:
+    app: db-seed
+spec:
+  backoffLimit: 20
+  activeDeadlineSeconds: 600        # 테이블이 끝내 안 생기면(앱 미기동) 무한 대기 방지
+  ttlSecondsAfterFinished: 600      # 완료 후 10분 뒤 Job 정리
+  template:
+    metadata:
+      labels:
+        app: db-seed
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: mysql:8.0
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "[db-seed] waiting for Flyway-created tables ..."
+              until mysql -h mysql-user  -uroot -p"$MYSQL_ROOT_PASSWORD" user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 5; done
+              until mysql -h mysql-order -uroot -p"$MYSQL_ROOT_PASSWORD" orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 5; done
+              echo "[db-seed] seeding functional fixtures ..."
+              mysql -h mysql-user  -uroot -p"$MYSQL_ROOT_PASSWORD" user   < /seed/user.sql
+              mysql -h mysql-order -uroot -p"$MYSQL_ROOT_PASSWORD" orders < /seed/order.sql
+              echo "[db-seed] done."
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: commerce-secret
+                  key: MYSQL_ROOT_PASSWORD
+          volumeMounts:
+            - name: seed
+              mountPath: /seed
+              readOnly: true
+      volumes:
+        - name: seed
+          configMap:
+            name: db-seed-sql
