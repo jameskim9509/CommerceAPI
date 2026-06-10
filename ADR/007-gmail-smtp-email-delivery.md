@@ -26,19 +26,18 @@
 
 | 환경 | 주입 방법 |
 |---|---|
-| 로컬(VS Code) | `.vscode/.env.local`(gitignore) → `launch.json` 의 `envFile` |
+| 로컬 (VS Code · docker compose) | 루트 `.env`(gitignore) — `launch.json` 의 `envFile` 과 docker compose 가 공유 (compose 는 미설정 시 더미 기본값) |
 | 단위/통합 테스트 | 미주입 — `GmailClient` 를 `@MockBean` 으로 대체 (실제 SMTP 연결 없음) |
-| docker-compose (test/qa) | compose `environment` 의 더미 값 |
 | Kubernetes | `commerce-secret` (test 는 더미, prod 는 `REPLACE_ME` → External Secrets 권장) |
 | EC2 (레거시 CI 배포) | `docker run -e MAIL_USERNAME -e MAIL_PASSWORD` (GitHub Secrets) |
 
 ## App Password 의 로컬 관리 (노출 방지)
 
-App Password 는 메일 발송 권한을 가지므로 **절대 커밋하지 않는다.** 로컬에서는 VS Code 에서만 관리한다.
+App Password 는 메일 발송 권한을 가지므로 **절대 커밋하지 않는다.** 로컬은 **루트 `.env` 단일 파일**로 관리하며, docker compose 와 VS Code 자바 실행이 같은 파일을 공유한다.
 
-- `.vscode/.env.local` — 실제 값. `.gitignore` 가 `.vscode/*` 를 무시하고 `.vscode/.env.local` 을 명시적으로 추가 차단한다.
-- `.vscode/.env.local.example` — 추적되는 템플릿(값 없음).
-- `.vscode/launch.json` — 추적되는 실행 설정(비밀 없음, `envFile` 참조만). 위 두 파일만 `.gitignore` 의 `!` 규칙으로 추적 예외.
+- `.env`(루트) — 실제 값. `.gitignore` 의 `.env` 규칙으로 커밋 차단. docker compose(루트 실행 시 자동 인식) 와 `.vscode/launch.json` 의 `envFile` 이 함께 읽는다.
+- `.env.example`(루트) — 추적되는 템플릿(값 없음). 복사해 `.env` 로 채워 쓴다.
+- `.vscode/launch.json` — 추적되는 실행 설정(비밀 없음, `envFile: ${workspaceFolder}/.env` 참조만).
 
 ## 결과
 
