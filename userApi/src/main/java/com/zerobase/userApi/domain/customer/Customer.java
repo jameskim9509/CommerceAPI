@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.envers.AuditOverride;
 import org.hibernate.envers.Audited;
+import org.hibernate.envers.NotAudited;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -40,6 +41,11 @@ public class Customer extends BaseEntity{
 
     @Column(columnDefinition = "int default 0")
     private Integer balance;
+
+    // ADR-002 의 낙관적 락을 잔액(결제·환불 동시성)에도 적용. 재고(ProductItem.version)와 동일 패턴.
+    @Version
+    @NotAudited
+    private Long version;
 
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> roles;
