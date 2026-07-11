@@ -6,7 +6,7 @@ export MSYS_NO_PATHCONV=1
 #
 # 사전:
 #   - Docker daemon 실행 중
-#   - qa/docker-compose.qa.yml, qa/k6/load-test.js, qa/seed/*.sql 존재
+#   - 같은 폴더의 docker-compose.qa.yml, k6/load-test.js, seed/*.sql 존재
 #
 # 동작:
 #   for N in 1 2 4:
@@ -17,14 +17,14 @@ export MSYS_NO_PATHCONV=1
 #     5. k6 부하 테스트 실행 (5 분)
 #     6. 결과 / 잔여 PENDING / 멱등성 위반 수집
 #
-# 사용:  ./qa/run-experiments.sh
+# 사용:  ./qa/01-load-balancing/run-experiments.sh
 # =============================================================================
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."   # 프로젝트 루트
+cd "$(dirname "$0")"   # 시나리오 폴더 (qa/01-load-balancing) — 이하 모든 경로가 여기 기준
 
-QA_DIR="qa"
+QA_DIR="."
 COMPOSE_FILE="$QA_DIR/docker-compose.qa.yml"
 RESULTS_DIR="$QA_DIR/results"
 

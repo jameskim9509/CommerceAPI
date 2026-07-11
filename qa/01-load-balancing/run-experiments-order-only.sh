@@ -10,9 +10,9 @@
 export MSYS_NO_PATHCONV=1
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"   # 시나리오 폴더 (qa/01-load-balancing) — 이하 모든 경로가 여기 기준
 
-QA_DIR="qa"
+QA_DIR="."
 COMPOSE_FILE="$QA_DIR/docker-compose.qa.yml"
 RESULTS_DIR="$QA_DIR/results"
 mkdir -p "$RESULTS_DIR"
