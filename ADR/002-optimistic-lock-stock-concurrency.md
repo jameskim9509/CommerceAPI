@@ -218,3 +218,15 @@ sequenceDiagram
 남는 책임:
 - **클라이언트**: 409 STOCK_CONFLICT 수신 시 재고 재조회 후 사용자에게 안내·재시도 유도
 - **orderApi**: `@Version` 으로 재고 row 의 동시성 일관성만 보장. 결제(`userClient.changeBalance`) 와 재고 차감 사이의 분산 트랜잭션·보상은 본 ADR 의 범위 밖.
+
+---
+
+## 실제 SAGA 런타임에서의 낙관적 락 (ADR-003 반영, 2026-07-06 보강)
+
+위 "409 STOCK_CONFLICT → 클라이언트 재시도" 서술은 재고 차감이 **요청 스레드에서 동기** 로 일어나던 시점 기준이다. [ADR-003](./003-choreography-saga-compensation.md) 의 Choreography SAGA 도입 후 실제 런타임은 다르다.
+
+- 재고 차감은 `StockConsumer` 가 `payment-deducted` 이벤트를 받아 **비동기**(`StockReservationService.reserveStock`, `REQUIRES_NEW`)로 수행한다.
+- 커밋 시 `ObjectOptimisticLockingFailureException` 이 나면 `StockConsumer` 가 이를 **catch 하여 `StockReservationFailed` 보상 이벤트로 변환**한다 → userApi 환불 → `Order=FAILED`. 클라이언트에게 409 를 돌려주지 않는다 — 클라이언트는 이미 주문 진입 시 `200 OK (status=PENDING)` 를 받았기 때문이다.
+- 따라서 낙관적 락의 정확성은 **409 응답 수** 가 아니라 **최종 결과**로 검증한다: 음수 재고 0, `(초기재고 − count) == Σ CONFIRMED 수량`, `version == 성공 차감 횟수`, 실패분은 환불 후 `FAILED`. 초과판매는 사후 취소가 아니라 **커밋 전 원천 차단**된다.
+
+원하는 장애(중복 결제·재고 충돌·결제 후 재고 실패)와 주변 장애를 한 부하에서 동시에 발화시킨 통합 검증은 [ADR-008](./008-order-consistency-integration-scenario.md) 을 참조한다 (실측 9/9 PASS).

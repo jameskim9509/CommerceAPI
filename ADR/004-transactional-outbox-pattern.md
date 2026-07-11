@@ -1,7 +1,8 @@
 # ADR 004: Kafka 발행에 Transactional Outbox 패턴 적용
 
-- 상태: 제안 (Proposed)
+- 상태: 수용 (Accepted)
 - 작성일: 2026-05-25
+- 구현/검증: orderApi·userApi 양 모듈에 구현 완료 (`OutboxEvent` / `OutboxPoller` / `SagaEventPublisher`, `outbox_events` 테이블). [ADR-008](./008-order-consistency-integration-scenario.md) 통합 시나리오에서 `outbox_events.sent_at IS NULL = 0` (양 DB) 로 실측 확인.
 - 관련 코드: [orderApi/.../OrderService.java](../orderApi/src/main/java/com/zerobase/orderApi/service/OrderService.java), [orderApi/.../SagaEventPublisher.java](../orderApi/src/main/java/com/zerobase/orderApi/saga/SagaEventPublisher.java)
 
 ## 컨텍스트
