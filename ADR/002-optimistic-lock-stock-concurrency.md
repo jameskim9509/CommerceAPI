@@ -229,4 +229,4 @@ sequenceDiagram
 - 커밋 시 `ObjectOptimisticLockingFailureException` 이 나면 `StockConsumer` 가 이를 **catch 하여 `StockReservationFailed` 보상 이벤트로 변환**한다 → userApi 환불 → `Order=FAILED`. 클라이언트에게 409 를 돌려주지 않는다 — 클라이언트는 이미 주문 진입 시 `200 OK (status=PENDING)` 를 받았기 때문이다.
 - 따라서 낙관적 락의 정확성은 **409 응답 수** 가 아니라 **최종 결과**로 검증한다: 음수 재고 0, `(초기재고 − count) == Σ CONFIRMED 수량`, `version == 성공 차감 횟수`, 실패분은 환불 후 `FAILED`. 초과판매는 사후 취소가 아니라 **커밋 전 원천 차단**된다.
 
-원하는 장애(중복 결제·재고 충돌·결제 후 재고 실패)와 주변 장애를 한 부하에서 동시에 발화시킨 통합 검증은 [ADR-008](./008-order-consistency-integration-scenario.md) 을 참조한다 (실측 9/9 PASS).
+원하는 장애(중복 결제·재고 충돌·결제 후 재고 실패)와 주변 장애를 한 부하에서 동시에 발화시킨 통합 검증 **방법**은 [ADR-008](./008-order-consistency-integration-scenario.md) 을 참조한다 — 측정 KPI 는 6개 방어를 무방어→방어로 토글한 **위반 총수 집계 `N→r`** 이며, "`@Version` 이 초과판매를 막았다"는 개별 귀속은 하지 않는다. 통합 하네스는 ADR-008 명세대로 재작성 예정이라 실측치는 아직 `⟨측정전⟩` 이다.
