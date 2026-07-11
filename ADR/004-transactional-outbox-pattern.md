@@ -1,7 +1,8 @@
 # ADR 004: Kafka 발행에 Transactional Outbox 패턴 적용
 
-- 상태: 제안 (Proposed)
+- 상태: 수용 (Accepted)
 - 작성일: 2026-05-25
+- 구현: orderApi·userApi 양 모듈에 구현 완료 (`OutboxEvent` / `OutboxPoller` / `SagaEventPublisher`, `outbox_events` 테이블). 발행 정합성 검증은 [ADR-008](./008-order-consistency-integration-scenario.md) 통합 시나리오의 교차 DB 불변식으로 **예정**(실측 `⟨측정전⟩`) — 단 `outbox_events.sent_at IS NULL = 0` **단독은** 브로커 durability 한계(ADR-008 T4)에서 **거짓 PASS** 이므로, 돈 보존·PENDING/PAID 잔여와 **함께** 판정한다.
 - 관련 코드: [orderApi/.../OrderService.java](../orderApi/src/main/java/com/zerobase/orderApi/service/OrderService.java), [orderApi/.../SagaEventPublisher.java](../orderApi/src/main/java/com/zerobase/orderApi/saga/SagaEventPublisher.java)
 
 ## 컨텍스트

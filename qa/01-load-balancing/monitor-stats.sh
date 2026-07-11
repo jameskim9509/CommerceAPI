@@ -10,8 +10,9 @@ LABEL="${1:-unknown}"
 LOCK=/tmp/qa-monitor.lock
 INTERVAL=5
 
-cd "$(dirname "$0")/.."   # 프로젝트 루트
-RESULTS_DIR="qa/results"
+cd "$(dirname "$0")"   # 시나리오 폴더 (qa/01-load-balancing)
+RESULTS_DIR="results"
+# 컨테이너명 qa-* 는 docker-compose.qa.yml 의 `name: qa` 로 고정됨 (아래 grep/exec 가 이에 의존).
 
 STATS_FILE="${RESULTS_DIR}/${LABEL}-stats.csv"
 MYSQL_FILE="${RESULTS_DIR}/${LABEL}-mysql.csv"
@@ -28,10 +29,12 @@ echo "[monitor] started for $LABEL, lock=$LOCK, interval=${INTERVAL}s"
 while [ -f "$LOCK" ]; do
     TS=$(date +%H:%M:%S)
 
-    # 1) docker stats (모든 qa-* 컨테이너)
+    # 1) docker stats (이 스택의 qa-* 컨테이너만)
+    #    docker ps 는 프로젝트 비한정 전역 목록이라, 형제 시나리오(02-consistency, name: qa-consist)의
+    #    qa-consist-* 컨테이너가 살아 있으면 ^qa- 에 함께 걸린다 → 명시적으로 제외한다.
     docker stats --no-stream \
         --format '{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}}' \
-        $(docker ps --format '{{.Names}}' | grep '^qa-' || true) 2>/dev/null \
+        $(docker ps --format '{{.Names}}' | grep '^qa-' | grep -v '^qa-consist-' || true) 2>/dev/null \
         | sed "s|^|${TS},|; s|/|on|g; s| GiB||g; s| MiB||g; s|%||g" \
         >> "$STATS_FILE" || true
 

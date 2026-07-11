@@ -18,15 +18,15 @@ resources:
   # 외부 진입 — gateway 는 ClusterIP(base) 유지, nginx Ingress 로 노출 (prod ALB 미러)
   - ingress-nginx.yaml
 
-# db-seed Job 이 마운트할 시드 SQL. 단일 출처는 qa/seed/functional/ (compose 와 공유).
+# db-seed Job 이 마운트할 시드 SQL. 단일 출처는 qa/01-load-balancing/seed/functional/ (compose 와 공유).
 #  - 트리 밖(../../../) 파일 참조라 standalone kustomize 는 --load-restrictor LoadRestrictionsNone 필요:
 #      kustomize build k8s/overlays/test --load-restrictor LoadRestrictionsNone | kubectl apply -f -
 #  - disableNameSuffixHash: Job 의 configMap 참조 이름(db-seed-sql)을 고정 (재적용 예측 가능).
 configMapGenerator:
   - name: db-seed-sql
     files:
-      - user.sql=../../../qa/seed/functional/user.sql
-      - order.sql=../../../qa/seed/functional/order.sql
+      - user.sql=../../../qa/01-load-balancing/seed/functional/user.sql
+      - order.sql=../../../qa/01-load-balancing/seed/functional/order.sql
     options:
       disableNameSuffixHash: true
 

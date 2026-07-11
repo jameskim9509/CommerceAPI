@@ -4,13 +4,18 @@
 # docker-compose.test.yml 와 분리한 이유:
 #   - 측정 전용 자원 한도 (인스턴스당 2 CPU / 1 GB) → 4 인스턴스 동시 띄우기 가능
 #   - 시드 자동화는 별도 run-experiments.sh 가 docker exec 로 수행
-#   - k6 컨테이너 추가 + qa/k6 / qa/results 볼륨 마운트
+#   - k6 컨테이너 추가 + ./k6 / ./results 볼륨 마운트
 #
 # 사용:
-#   docker compose -f qa/docker-compose.qa.yml up -d                 # 기본 (orderapi 1 개)
-#   docker compose -f qa/docker-compose.qa.yml up -d --scale orderapi=N
-#   docker compose -f qa/docker-compose.qa.yml down -v               # 정리 (볼륨 포함)
+#   docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d                 # 기본 (orderapi 1 개)
+#   docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d --scale orderapi=N
+#   docker compose -f qa/01-load-balancing/docker-compose.qa.yml down -v               # 정리 (볼륨 포함)
+#
+# ★ name: qa 고정 — 컨테이너명을 qa-* 로 유지해야 monitor-stats.sh 의 `qa-` 접두사/
+#   `qa-mysql-order-1` 하드코딩이 그대로 동작한다 (폴더명이 프로젝트명이 되는 기본 동작 무력화).
 # =============================================================================
+
+name: qa
 
 services:
   mysql-user:
@@ -84,7 +89,7 @@ services:
 
   eureka:
     build:
-      context: ../eurekaServer
+      context: ../../eurekaServer
       dockerfile: Dockerfile
     ports:
       - "8761:8761"
@@ -103,7 +108,7 @@ services:
 
   userapi:
     build:
-      context: ../userApi
+      context: ../../userApi
       dockerfile: Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
@@ -132,7 +137,7 @@ services:
   # ADR-005 측정 대상. --scale orderapi=N 으로 N 인스턴스 기동.
   orderapi:
     build:
-      context: ../orderApi
+      context: ../../orderApi
       dockerfile: Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
@@ -160,7 +165,7 @@ services:
 
   gateway:
     build:
-      context: ../gateway
+      context: ../../gateway
       dockerfile: Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
@@ -181,7 +186,7 @@ services:
   # 기능/시나리오 베이스 시드 자동 주입 (1회용).
   #   스키마는 Flyway(앱 부팅 시)가 만들므로 테이블이 생길 때까지 폴링 후 functional 시드 주입.
   #   run-experiments*.sh 는 up 의 서비스 목록에서 db-seed 를 제외하므로 부하 실험엔 영향 없고,
-  #   직접 `docker compose -f qa/docker-compose.qa.yml up -d` 하면 functional 시드가 자동 주입된다.
+  #   직접 `docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d` 하면 functional 시드가 자동 주입된다.
   db-seed:
     image: mysql:8.0
     restart: "no"

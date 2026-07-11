@@ -2,7 +2,7 @@
 
 - 상태: 제안 (Proposed)
 - 작성일: 2026-06-01
-- 관련 코드: [.github/workflows/CICD.yml](../.github/workflows/CICD.yml), [docker-compose.test.yml](../docker-compose.test.yml), [qa/docker-compose.qa.yml](../qa/docker-compose.qa.yml), [k8s/](../k8s/)
+- 관련 코드: [.github/workflows/CICD.yml](../.github/workflows/CICD.yml), [docker-compose.test.yml](../docker-compose.test.yml), [qa/01-load-balancing/docker-compose.qa.yml](../qa/01-load-balancing/docker-compose.qa.yml), [k8s/](../k8s/)
 
 ## 컨텍스트
 

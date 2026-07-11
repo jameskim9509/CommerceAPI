@@ -210,7 +210,7 @@ services:
       orderapi:
         condition: service_started
     volumes:
-      - ./qa/seed/functional:/seed:ro
+      - ./qa/01-load-balancing/seed/functional:/seed:ro
     entrypoint: ["sh", "-c"]
     command:
       - |
