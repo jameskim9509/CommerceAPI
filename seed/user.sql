@@ -9,7 +9,7 @@
 --   - seller id 1·2 / customer id 9001+ 를 명시적 고정 PK 로 점유 (안정적 참조용).
 --   - cleanup 은 자기 행만 (customer-%, seller1/2) — 멱등(DELETE+INSERT) 재주입 안전.
 --
--- 주: QA 부하 시나리오(qa/01-load-balancing)는 자기 seed 를 따로 가진 자립 구조라
+-- 주: QA 부하 시나리오(qa/01-orderapi-load-balancing)는 자기 seed 를 따로 가진 자립 구조라
 --     이 파일과 무관하다 (별도 DB · 별도 seller). 여기서 load seed 를 참조하지 않는다.
 -- =============================================================================
 

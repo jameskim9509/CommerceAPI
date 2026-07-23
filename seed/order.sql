@@ -8,7 +8,7 @@
 --   - cleanup 은 'QA-%' 자기 행만 — 멱등(DELETE+INSERT) 재주입 안전.
 --     order_items 는 product_item 에 FK 가 없으므로(스냅샷) 이름 기반 삭제로 안전.
 --
--- 주: QA 부하 시나리오(qa/01-load-balancing)는 자기 seed 를 따로 가진 자립 구조라
+-- 주: QA 부하 시나리오(qa/01-orderapi-load-balancing)는 자기 seed 를 따로 가진 자립 구조라
 --     이 파일과 무관하다 (별도 DB). 여기서 load seed 를 참조하지 않는다.
 -- =============================================================================
 

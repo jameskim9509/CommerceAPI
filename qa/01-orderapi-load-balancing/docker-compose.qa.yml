@@ -7,16 +7,16 @@
 #   - k6 컨테이너 추가 + ./k6 / ./results 볼륨 마운트
 #
 # 사용:
-#   docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d                 # 기본 (orderapi 1 개)
-#   docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d --scale orderapi=N
-#   docker compose -f qa/01-load-balancing/docker-compose.qa.yml down -v               # 정리 (볼륨 포함)
+#   docker compose -f qa/01-orderapi-load-balancing/docker-compose.qa.yml up -d                 # 기본 (orderapi 1 개)
+#   docker compose -f qa/01-orderapi-load-balancing/docker-compose.qa.yml up -d --scale orderapi=N
+#   docker compose -f qa/01-orderapi-load-balancing/docker-compose.qa.yml down -v               # 정리 (볼륨 포함)
 #
-# ★ name: qa-load-balancing — 시나리오별 고유 프로젝트명 (형제 시나리오 qa-consist 와 대칭).
-#   컨테이너명이 qa-load-balancing-* 로 고정돼 monitor-stats.sh 의 접두사/
-#   `qa-load-balancing-mysql-order-1` 하드코딩이 동작한다 (폴더명이 프로젝트명이 되는 기본 동작 무력화).
+# ★ name: qa-orderapi-load-balancing — 시나리오별 고유 프로젝트명 (형제 시나리오 qa-consist 와 대칭).
+#   컨테이너명이 qa-orderapi-load-balancing-* 로 고정돼 monitor-stats.sh 의 접두사/
+#   `qa-orderapi-load-balancing-mysql-order-1` 하드코딩이 동작한다 (폴더명이 프로젝트명이 되는 기본 동작 무력화).
 # =============================================================================
 
-name: qa-load-balancing
+name: qa-orderapi-load-balancing
 
 services:
   mysql-user:
@@ -187,7 +187,7 @@ services:
   # 시나리오 자립 시드 자동 주입 (1회용). 이 시드가 자기 seller + 부하 더미를 모두 만든다.
   #   스키마는 Flyway(앱 부팅 시)가 만들므로 테이블이 생길 때까지 폴링 후 시나리오 seed 주입.
   #   수동 측정 절차는 up 의 서비스 목록에서 db-seed 를 제외하고 직접 시드하므로 중복 없음.
-  #   직접 `docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d` 하면 시나리오 seed 가 자동 주입된다.
+  #   직접 `docker compose -f qa/01-orderapi-load-balancing/docker-compose.qa.yml up -d` 하면 시나리오 seed 가 자동 주입된다.
   db-seed:
     image: mysql:8.0
     restart: "no"
@@ -223,8 +223,10 @@ services:
       - ./results:/results
     environment:
       GATEWAY_URL: http://gateway
-      USER_COUNT: 1000
-      PRODUCT_ITEM_BASE_ID: 1
+      VUS: ${VUS:-500}
+      USER_COUNT: ${USER_COUNT:-500}
+      ORDER_COUNT: ${ORDER_COUNT:-100000}
+      PRODUCT_ITEM_COUNT: ${PRODUCT_ITEM_COUNT:-500}
       EXPERIMENT_LABEL: ${EXPERIMENT_LABEL:-unknown}
     depends_on:
       gateway: { condition: service_started }

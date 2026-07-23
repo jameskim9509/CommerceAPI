@@ -5,7 +5,7 @@
 
 | 시나리오 | 목적 | 진입점 | 결과 |
 |---|---|---|---|
-| [**01-load-balancing/**](01-load-balancing/) | orderApi 1→2→4 스케일 시 **LoadBalancer 효과** 정량화 (ADR-005 시나리오 3) | 수동 측정 절차 ([README](01-load-balancing/README.md)) | `E1/E2/E3`, `E1o/E2o/E3o` |
+| [**01-orderapi-load-balancing/**](01-orderapi-load-balancing/) | orderApi 1→2→4 스케일 시 **LoadBalancer 효과** 정량화 (ADR-005 시나리오 3) | 수동 측정 절차 ([README](01-orderapi-load-balancing/README.md)) | `E1/E2/E3` |
 | **02-consistency/** _(예정)_ | 멱등성·낙관적락(초과판매)·SAGA보상 통합 정합성 검증 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | ADR-008 명세대로 **신규 작성 예정** | — |
 
 > **02-consistency 는 아직 없다.** [ADR-008](../ADR/008-order-consistency-integration-scenario.md) 명세(주문 10만 건 통합 부하 + 주변 장애 T1~T6)에 맞춰 새로 작성한다.
@@ -16,7 +16,7 @@
 측정은 **인스턴스를 직접 늘려가며 수동으로** 수행한다. 시나리오 폴더 README 의
 "실행 — 수동 측정" 절차(스택 기동 → 시드 → 모니터 → k6 → 수집 → 분석)를 따른다:
 
-[01-load-balancing/README.md](01-load-balancing/README.md)
+[01-orderapi-load-balancing/README.md](01-orderapi-load-balancing/README.md)
 
 ## 공통 규칙
 

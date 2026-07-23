@@ -10,9 +10,9 @@ LABEL="${1:-unknown}"
 LOCK=/tmp/qa-monitor.lock
 INTERVAL=5
 
-cd "$(dirname "$0")"   # 시나리오 폴더 (qa/01-load-balancing)
+cd "$(dirname "$0")"   # 시나리오 폴더 (qa/01-orderapi-load-balancing)
 RESULTS_DIR="results"
-# 컨테이너명 qa-load-balancing-* 는 docker-compose.qa.yml 의 `name: qa-load-balancing` 으로 고정됨 (아래 grep/exec 가 이에 의존).
+# 컨테이너명 qa-orderapi-load-balancing-* 는 docker-compose.qa.yml 의 `name: qa-orderapi-load-balancing` 으로 고정됨 (아래 grep/exec 가 이에 의존).
 
 STATS_FILE="${RESULTS_DIR}/${LABEL}-stats.csv"
 MYSQL_FILE="${RESULTS_DIR}/${LABEL}-mysql.csv"
@@ -29,17 +29,17 @@ echo "[monitor] started for $LABEL, lock=$LOCK, interval=${INTERVAL}s"
 while [ -f "$LOCK" ]; do
     TS=$(date +%H:%M:%S)
 
-    # 1) docker stats (이 스택의 qa-load-balancing-* 컨테이너만)
+    # 1) docker stats (이 스택의 qa-orderapi-load-balancing-* 컨테이너만)
     #    docker ps 는 프로젝트 비한정 전역 목록이라 프로젝트명 접두사로 이 스택만 필터한다.
     #    (접두사가 시나리오 고유라 형제 시나리오 컨테이너와 겹치지 않는다.)
     docker stats --no-stream \
         --format '{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}}' \
-        $(docker ps --format '{{.Names}}' | grep '^qa-load-balancing-' || true) 2>/dev/null \
+        $(docker ps --format '{{.Names}}' | grep '^qa-orderapi-load-balancing-' || true) 2>/dev/null \
         | sed "s|^|${TS},|; s|/|on|g; s| GiB||g; s| MiB||g; s|%||g" \
         >> "$STATS_FILE" || true
 
     # 2) MySQL 상태 (mysql-order)
-    METRICS=$(docker exec qa-load-balancing-mysql-order-1 mysql -uroot -proot -BN -e "
+    METRICS=$(docker exec qa-orderapi-load-balancing-mysql-order-1 mysql -uroot -proot -BN -e "
         SELECT
             (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Threads_connected'),
             (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME='Threads_running'),
