@@ -47,7 +47,7 @@ const instanceIdSeen = new Trend('instance_id_seen');  // dummy: not used but ke
 function recordInstanceHit(instanceId) {
     instanceHits.add(1);
     if (!instanceId) { hitsOther.add(1); return; }
-    // 컨테이너 이름은 docker compose 가 부여 (예: qa-orderapi-1) — k6 가 받는 HOSTNAME 환경변수는 컨테이너 이름이 아니라 컨테이너 ID (12자리 hex).
+    // 컨테이너 이름은 docker compose 가 부여 (예: qa-load-balancing-orderapi-1) — k6 가 받는 HOSTNAME 환경변수는 컨테이너 이름이 아니라 컨테이너 ID (12자리 hex).
     // 여기서는 본 측정용으로 5분 동안 등장하는 unique instance id 분포 자체를 별도 객체에 누적 후 handleSummary 에서 dump.
     if (!__ENV.__INSTANCE_MAP) { /* state lives in module scope below */ }
     INSTANCE_HITS_MAP[instanceId] = (INSTANCE_HITS_MAP[instanceId] || 0) + 1;

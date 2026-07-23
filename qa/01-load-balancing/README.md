@@ -10,7 +10,7 @@ orderApi 인스턴스를 1 / 2 / 4 로 늘리면서 Gateway + Eureka LoadBalance
 
 ```
 qa/01-load-balancing/
-├── docker-compose.qa.yml           측정 전용 compose (작은 자원 한도 + k6 runner + db-seed). name: qa 고정
+├── docker-compose.qa.yml           측정 전용 compose (작은 자원 한도 + k6 runner + db-seed). name: qa-load-balancing 고정
 ├── run-experiments.sh              E1 / E2 / E3 자동 실행 (cart→order 워크로드)
 ├── run-experiments-order-only.sh   E1o / E2o / E3o (order-only 워크로드 — cart_add throttle 제거)
 ├── monitor-stats.sh                부하 중 docker stats + MySQL + Eureka 를 5초 간격 캡쳐
@@ -145,4 +145,4 @@ k6 워크로드는 5 % 확률로 **같은 Idempotency-Key 로 두 번 전송**.
 - Redis 카트는 k6 가 매 반복마다 동적으로 추가 (시드 SQL 범위 밖)
 - docker-compose `deploy.resources.limits` 는 Docker Desktop 에서 동작
   (Linux daemon 의 Swarm 모드와는 다르지만 단일 노드에서는 적용됨)
-- 컨테이너명은 `docker-compose.qa.yml` 의 `name: qa` 로 `qa-*` 고정 — `monitor-stats.sh` 의 `qa-mysql-order-1` 등 하드코딩이 이에 의존
+- 컨테이너명은 `docker-compose.qa.yml` 의 `name: qa-load-balancing` 으로 `qa-load-balancing-*` 고정 — `monitor-stats.sh` 의 `qa-load-balancing-mysql-order-1` 등 하드코딩이 이에 의존
