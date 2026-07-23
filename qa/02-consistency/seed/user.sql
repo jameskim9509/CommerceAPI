@@ -11,14 +11,31 @@
 --   반드시 있어야 하며, 그 행의 change_money(=현재 running balance) 가 결제 가능액이다. 이력이 없으면
 --   시작 잔액을 0 으로 보아 모든 결제가 NOT_ENOUGH_BALANCE 로 실패한다.
 --
--- 공존 규칙:
---   - seller 는 만들지 않는다 — functional/user.sql 이 seller id=1·2 를 먼저 점유(order 시드가 seller_id=1 재사용).
+-- 자립 시드 규칙 (01-load-balancing 과 동일 원칙 — 필요한 모든 데이터를 스스로 만든다):
+--   - seller(id=1) 도 이 시드가 직접 만든다 — order.sql 의 product.seller_id=1 및
+--     k6(load-test-consistency.js) 카트 body(sellerId:1) 가 참조. 주입 순서 user.sql → order.sql.
+--     이 스택은 전용 DB(name: consist)라 다른 시나리오/상시환경 seller 와 공존하지 않아 PK 충돌 없음.
 --   - 이메일 접두사 ctrich / ctbroke 로 런 스코프를 잡는다 (verify-consistency.sh 와 동일 규칙).
---   - cleanup 은 자기 행(^(ctrich|ctbroke)[0-9]+@qa\.test$)만 — load/functional 시드는 건드리지 않는다.
+--   - cleanup 은 자기 행(seller id=1, ^(ctrich|ctbroke)[0-9]+@qa\.test$)만 — 멱등 재주입 안전.
 --   - password 평문 "password" (BCryptPasswordEncoder 호환), verify=TRUE(검증 우회), role=CUSTOMER.
 -- =============================================================================
 
 USE `user`;
+
+-- ---------------- SELLER (id=1) — 이 시나리오가 직접 소유 ----------------
+-- order.sql 의 product.seller_id=1 및 k6 카트 body(sellerId:1) 가 참조하는 판매자.
+-- (자식 seller_roles → 부모 seller 순서로 정리)
+DELETE FROM seller_roles WHERE seller_id = 1;
+DELETE FROM seller       WHERE id = 1;
+
+INSERT INTO seller
+    (id, email, name, password, birth, phone_num, verify_expired_at, verification_code, verify, created_date, modified_date)
+VALUES
+    (1, 'ctseller1@qa.test', 'CT Seller 1',
+     '$2b$10$8P14US/kur6TMqGsC90ro.r8nvQ8uOrD8zLut4XyA2Y9qvGQiYOzq',  -- bcrypt("password")
+     '1990-01-01', '010-3000-0001', NOW() + INTERVAL 1 YEAR, NULL, b'1', NOW(), NOW());
+
+INSERT INTO seller_roles (seller_id, roles) VALUES (1, 'ROLE_SELLER');
 
 -- ---------------- cleanup (자기 행만, FK 순서) ----------------
 DELETE FROM customer_roles           WHERE customer_id IN (SELECT id FROM (SELECT id FROM customer WHERE email REGEXP '^(ctrich|ctbroke)[0-9]+@qa\\.test$') AS t);
@@ -76,7 +93,9 @@ SELECT 500, 0, 'ct-seed', 'ct broke initial charge', id, NOW(6), NOW(6)
 FROM customer WHERE email REGEXP '^ctbroke[0-9]+@qa\\.test$';
 
 -- ---------------- 검증 ----------------
-SELECT 'ctrich'  AS pool, COUNT(*) AS customers FROM customer WHERE email REGEXP '^ctrich[0-9]+@qa\\.test$'
+SELECT 'seller'  AS pool, COUNT(*) AS customers FROM seller WHERE id = 1
+UNION ALL
+SELECT 'ctrich', COUNT(*) FROM customer WHERE email REGEXP '^ctrich[0-9]+@qa\\.test$'
 UNION ALL
 SELECT 'ctbroke', COUNT(*) FROM customer WHERE email REGEXP '^ctbroke[0-9]+@qa\\.test$'
 UNION ALL

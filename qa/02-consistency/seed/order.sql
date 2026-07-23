@@ -11,10 +11,10 @@
 --   OrderService.order 가 CART_CHECK_REQUIRED 로 거절한다 → SAGA 진입 자체가 막혀 측정이 오염된다.
 --   메모리 규칙대로 hot-path 문자열은 전부 ASCII.
 --
--- 공존 규칙:
---   - seller_id 1 = functional/user.sql 의 seller1 (functional 먼저 주입).
---   - id 범위 10001 / 20001.. 은 functional(9001..) · load(1..500) 과 겹치지 않는다.
---   - cleanup 은 자기 행(CT-HOT% / CtNormal% / username ctrich|ctbroke)만.
+-- 자립 시드 규칙 (01-load-balancing 과 동일 원칙):
+--   - seller_id 1 = 이 시나리오 user.sql 의 seller (자립 — user.sql 을 먼저 주입).
+--   - 이 스택은 전용 DB(name: consist)라 id 범위 10001 / 20001.. 을 이 시드만 사용한다.
+--   - cleanup 은 자기 행(CT-HOT% / CtNormal% / username ctrich|ctbroke)만 — 멱등 재주입 안전.
 --   - product_item.version = 0 (V3 DEFAULT) — @Version 낙관적 락 초기값.
 -- =============================================================================
 

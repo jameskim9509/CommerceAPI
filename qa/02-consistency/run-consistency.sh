@@ -9,7 +9,7 @@
 #     - 방어 브랜치(feature/main) 에서 실행       → treatment 측정 (라벨 예: T-run1)
 #   실행 전 반드시 그 브랜치 소스로 이미지를 빌드해 둘 것: ./build-images.sh
 #
-# 동작: down -v → up(orderapi ×N, --no-build) → ready 대기 → 시드(functional→scenario)
+# 동작: down -v → up(orderapi ×N, --no-build) → ready 대기 → 시드(자립: user.sql→order.sql)
 #       → k6(부하) + chaos(bounded T1–T4) 동시 → k6 종료 → 정착(quiescence) → verify(교차 DB 9체크) → down -v
 #
 # 환경변수: ORDER_TARGET(100000) ARRIVAL_RATE(200) N_ORDERAPI(4) CHAOS(on|off) RICH_POOL(300) BROKE_POOL(60)
@@ -49,12 +49,10 @@ docker compose $COMPOSE_ARGS up -d --no-build --scale orderapi="$N_ORDERAPI" \
 echo "[$LABEL] ready 대기 ${READY_WAIT}s (JVM 부팅 + Eureka 등록 + Gateway registry fetch) ..."
 sleep "$READY_WAIT"
 
-# 2) 시드: functional 베이스(seller1) → scenario(ctrich/ctbroke + hot/normal SKU)
-echo "[$LABEL] 시드 (functional → scenario) ..."
-docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot user   < ../01-load-balancing/seed/functional/user.sql  >/dev/null
-docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot orders < ../01-load-balancing/seed/functional/order.sql >/dev/null
-docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot user   < ./seed/scenario/user.sql
-docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot orders < ./seed/scenario/order.sql
+# 2) 시드: 자립 시나리오 (seller1 + ctrich/ctbroke + hot/normal SKU)
+echo "[$LABEL] 시드 (자립: user.sql → order.sql) ..."
+docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot user   < ./seed/user.sql
+docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot orders < ./seed/order.sql
 
 # 3) 부하(k6) 백그라운드 + 카오스 동시
 echo "[$LABEL] k6 부하 시작 (백그라운드) ..."

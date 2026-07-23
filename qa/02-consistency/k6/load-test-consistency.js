@@ -15,7 +15,7 @@
 //   k6 가 직접 관측하는 유일한 원하는 장애는 ① 멱등성: duplicate_order_responses.
 //
 // 시드 일치(중요): CartService.refreshCart 가 product.name/description·item.name/price 를 DB 와 비교하므로
-//   아래 이름/설명/가격은 seed/scenario/order.sql 과 "정확히" 같아야 한다 (다르면 CART_CHECK_REQUIRED).
+//   아래 이름/설명/가격은 seed/order.sql 과 "정확히" 같아야 한다 (다르면 CART_CHECK_REQUIRED).
 //
 // 환경변수: GATEWAY_URL, ORDER_TARGET(총 주문 수), ARRIVAL_RATE(초당 도착), RICH_POOL, BROKE_POOL, RUN_LABEL
 // =============================================================================
@@ -70,7 +70,7 @@ const tokenCache = {};
 
 function pad3(n) { return ('000' + n).slice(-3); }
 
-// seed/scenario/order.sql 와 일치해야 하는 이름 규칙 (전부 ASCII)
+// seed/order.sql 와 일치해야 하는 이름 규칙 (전부 ASCII)
 function hotSku() {
     return { productId: 10001, itemId: 10001, sellerId: 1, price: 1000,
              productName: 'CT-HOT-Limited', productDesc: 'CT hot limited SKU', itemName: 'CT-HOT-Limited-Item' };

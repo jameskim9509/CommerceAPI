@@ -185,9 +185,9 @@ services:
           memory: 768M
     networks: [commerce-consist]
 
-  # 베이스(functional: seller1) → 시나리오(ctrich/ctbroke + hot/normal SKU) 자동 주입 (1회용).
+  # 시나리오 자립 시드(seller1 + ctrich/ctbroke + hot/normal SKU) 자동 주입 (1회용).
   #   run-consistency.sh 는 up 서비스 목록에서 db-seed 를 제외하고 명시적으로 주입하므로 부하엔 영향 없음.
-  #   플레인 `up` 시엔 이 서비스가 functional → scenario 순으로 주입한다.
+  #   플레인 `up` 시엔 이 서비스가 user.sql → order.sql 순으로 주입한다 (product 가 seller 를 참조).
   db-seed:
     image: mysql:8.0
     restart: "no"
@@ -197,8 +197,7 @@ services:
       userapi: { condition: service_started }
       orderapi: { condition: service_started }
     volumes:
-      - ../01-load-balancing/seed/functional:/seed/functional:ro
-      - ./seed/scenario:/seed/scenario:ro
+      - ./seed:/seed:ro
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -206,12 +205,9 @@ services:
         echo "[db-seed] waiting for Flyway-created tables ..."
         until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
         until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
-        echo "[db-seed] functional base (seller1) ..."
-        mysql -h mysql-user  -uroot -proot user   < /seed/functional/user.sql
-        mysql -h mysql-order -uroot -proot orders < /seed/functional/order.sql
-        echo "[db-seed] consistency scenario (ctrich/ctbroke + hot/normal SKU) ..."
-        mysql -h mysql-user  -uroot -proot user   < /seed/scenario/user.sql
-        mysql -h mysql-order -uroot -proot orders < /seed/scenario/order.sql
+        echo "[db-seed] consistency scenario (seller1 + ctrich/ctbroke + hot/normal SKU) ..."
+        mysql -h mysql-user  -uroot -proot user   < /seed/user.sql
+        mysql -h mysql-order -uroot -proot orders < /seed/order.sql
         echo "[db-seed] done."
     networks: [commerce-consist]
 
