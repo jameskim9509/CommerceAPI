@@ -130,8 +130,9 @@ ORDER_TARGET=100000 ./run-consistency.sh control   C-run1
 | ④ 잔액 검증 | env `CONSISTENCY_DEFENSE_BALANCE_CHECK=false` | userApi `CustomerBalanceHistoryService` (`@Value`) |
 | ②⑤ @Version | 소스 오버레이(빌드 중에만) → `:control` 이미지 | `control/overlay/{ProductItem,Customer}.java` |
 
-플래그는 **기본 true → treatment(현재 동작 그대로)**. `docker-compose.control.yml` 이 env 로만 6종을 내리고
-②⑤ 는 `:control` 이미지가 담당한다. JPA `@Version` 은 프로퍼티로 못 꺼서 오버레이가 필요하다.
+①③④⑥ 플래그는 **기본값을 각 모듈 `application.yml` 에 `consistency.defense.*: true` 로 명시**(= treatment/현재 동작).
+`docker-compose.control.yml` 이 **env 로 override** 해 control 에서만 false 로 내린다(env 가 yaml 보다 우선순위 높음, 재빌드 불필요).
+②⑤ 는 JPA `@Version` 이라 프로퍼티로 못 꺼서 `:control` 이미지(오버레이)가 담당한다.
 `control/build-control-images.sh` 는 오버레이를 **빌드 중에만** 덮어쓰고 `trap` 으로 원본을 복구한다(운영 소스 오염 없음).
 
 ## 알려진 제약 / 정직성
