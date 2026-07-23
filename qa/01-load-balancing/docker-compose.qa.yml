@@ -3,7 +3,7 @@
 #
 # docker-compose.test.yml 와 분리한 이유:
 #   - 측정 전용 자원 한도 (인스턴스당 2 CPU / 1 GB) → 4 인스턴스 동시 띄우기 가능
-#   - 시드 자동화는 별도 run-experiments.sh 가 docker exec 로 수행
+#   - 시드는 db-seed 서비스가 자동 주입하거나, 수동 측정 절차에서 docker exec 로 직접 주입
 #   - k6 컨테이너 추가 + ./k6 / ./results 볼륨 마운트
 #
 # 사용:
@@ -186,7 +186,7 @@ services:
 
   # 시나리오 자립 시드 자동 주입 (1회용). 이 시드가 자기 seller + 부하 더미를 모두 만든다.
   #   스키마는 Flyway(앱 부팅 시)가 만들므로 테이블이 생길 때까지 폴링 후 시나리오 seed 주입.
-  #   run-experiments*.sh 는 up 의 서비스 목록에서 db-seed 를 제외하고 명시적으로 시드하므로 중복 없음.
+  #   수동 측정 절차는 up 의 서비스 목록에서 db-seed 를 제외하고 직접 시드하므로 중복 없음.
   #   직접 `docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d` 하면 시나리오 seed 가 자동 주입된다.
   db-seed:
     image: mysql:8.0
@@ -229,7 +229,7 @@ services:
     depends_on:
       gateway: { condition: service_started }
     networks: [commerce]
-    # k6 run 은 run-experiments 스크립트에서 명시적으로 호출
+    # k6 run 은 수동 측정 절차에서 docker compose run --rm --no-deps k6 로 직접 호출
 
 networks:
   commerce:
