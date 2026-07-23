@@ -7,6 +7,7 @@ import com.zerobase.userApi.exception.ErrorCode;
 import com.zerobase.userApi.repository.customer.CustomerBalanceHistoryRepository;
 import com.zerobase.userApi.repository.customer.CustomerRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerBalanceHistoryService {
     private final CustomerBalanceHistoryRepository customerBalanceHistoryRepository;
     private final CustomerRepository customerRepository;
+
+    // [ADR-008 통합 시나리오] 원하는 장애 ④ 잔액 부족→결제 실패 방어(잔액 검증) on/off.
+    // 기본 true → treatment. control(무방어) 빌드만 false 로 내려 잔액 부족 검증을 건너뛴다(음수 잔액 허용).
+    @Value("${consistency.defense.balance-check:true}")
+    private boolean balanceCheckDefenseEnabled = true;   // Spring 미주입(순수 단위테스트)에서도 방어 ON 유지
 
     // 오류에 대해 수행된 트랜잭션 기록
     @Transactional(noRollbackFor = {CustomException.class})
@@ -32,7 +38,8 @@ public class CustomerBalanceHistoryService {
                                                  .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND))
                                  ).build());
 
-         if(customerBalanceHistory.getChangeMoney() + form.getMoney() < 0)
+         // control(무방어): 잔액 검증을 건너뛰어 음수 잔액을 허용 → PaymentFailed 분기가 사라지고 잔액이 음수로 붕괴.
+         if(balanceCheckDefenseEnabled && customerBalanceHistory.getChangeMoney() + form.getMoney() < 0)
          {
              throw new CustomException(ErrorCode.NOT_ENOUGH_BALANCE);
          }
