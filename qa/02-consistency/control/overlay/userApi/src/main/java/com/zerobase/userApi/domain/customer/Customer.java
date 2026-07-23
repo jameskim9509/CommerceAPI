@@ -15,11 +15,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 // =============================================================================
-// [ADR-008 control 무방어 빌드 전용 오버레이] — build-control-images.sh 가 빌드 중에만 원본 위에 덮어쓴다.
-// 원하는 장애 ⑤ 잔액 동시성 Lost Update 방어(잔액 낙관적 락)를 제거: @Version 필드 삭제.
+// [ADR-008 control 무방어 오버레이] 원하는 장애 ⑤ 잔액 동시성 Lost Update 방어(잔액 낙관적 락) 제거: @Version 삭제.
 //   → 같은 고객 동시 결제/환불이 서로를 덮어써 잔액이 유실/창조된다(돈 보존 파괴).
-//   customer.version 컬럼은 DB(NOT NULL DEFAULT 0)에 남지만 엔티티가 매핑하지 않으므로 ddl-auto:validate OK.
-// 이 파일은 treatment(정상) 소스와 @Version 유무만 다르다. 원본: userApi/.../domain/customer/Customer.java
+//   customer.version 컬럼은 DB(NOT NULL DEFAULT 0)에 남지만 엔티티가 매핑 안 함 → ddl-auto:validate OK.
+//   빌드 중에만 원본 위에 덮어씀. 원본과 @Version 유무만 다르다: userApi/.../domain/customer/Customer.java
 // =============================================================================
 @Entity
 @Getter

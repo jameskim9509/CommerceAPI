@@ -43,14 +43,6 @@ spring:
 user-api:
   url: http://ec2-43-202-0-143.ap-northeast-2.compute.amazonaws.com/user/customer
 
-# ADR-008 정합성 통합 시나리오: 방어 on/off 토글 (기본 true = 방어 ON = 현재/treatment 동작).
-#   control(무방어) 측정 시 docker-compose.control.yml 이 env(CONSISTENCY_DEFENSE_*)로 false override.
-#   ②재고락·⑤잔액락(@Version)은 프로퍼티로 못 꺼서 control/build-control-images.sh 소스 오버레이가 담당(여기 없음).
-consistency:
-  defense:
-    idempotency: true   # ① 멱등 게이트 (IdempotencyService)
-    dedup: true         # ⑥ processed_events dedup (IdempotentEventHandler)
-
 # ADR-005: Eureka 클라이언트 등록
 eureka:
   client:

@@ -7,7 +7,6 @@ import com.zerobase.orderApi.exception.CustomException;
 import com.zerobase.orderApi.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -33,16 +32,7 @@ public class IdempotencyService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
 
-    // [ADR-008 통합 시나리오] 원하는 장애 ① 중복 주문/결제에 대한 방어(멱등 게이트) on/off 토글.
-    // 기본 true → treatment(현재 동작 그대로). control(무방어) 빌드만 false 로 내려 게이트를 우회한다.
-    @Value("${consistency.defense.idempotency:true}")
-    private boolean idempotencyDefenseEnabled = true;   // Spring 미주입(순수 단위테스트)에서도 방어 ON 유지
-
     public ResponseEntity<?> execute(String idempotencyKey, Supplier<ResponseEntity<?>> action) {
-        // control(무방어): 멱등 게이트를 건너뛰고 모든 요청을 그대로 실행 → 같은 키 재전송이 새 주문을 만든다.
-        if (!idempotencyDefenseEnabled) {
-            return action.get();
-        }
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw new CustomException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
         }

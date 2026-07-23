@@ -120,20 +120,25 @@ ORDER_TARGET=100000 ./run-consistency.sh control   C-run1
 > ⚠ **T4 거짓 PASS**: "outbox 미발행=0"은 `sent_at IS NULL` 만 세므로 kafka 로그 전소(T4) 시 이미 sent 표기라
 > 손실을 놓친다 → T4 는 **돈 보존·PENDING/PAID 잔여**로만 잡히는 은닉 손실이다.
 
-## control(무방어) 빌드 — 하이브리드
+## control(무방어) 빌드 — 6종 전부 소스 오버레이
 
-| 방어 | 끄는 방식 | 위치 |
+**운영 코드에는 방어를 끄는 스위치(토글/프로퍼티)가 일절 없다** — 실수로 prod 에서 방어가 꺼지는 footgun 을
+원천 차단한다. control 은 `control/overlay/` 아래 "무방어본" 소스를 **빌드 중에만** 원본 위에 덮어써 만든
+`:control` 이미지로, `docker-compose.control.yml` 은 orderapi/userapi 를 그 이미지로 **교체만** 한다(env 없음).
+
+| 방어 | 제거 방식 | 오버레이 파일 (원본 = 이 파일 − 방어) |
 |---|---|---|
-| ① 멱등 게이트 | env `CONSISTENCY_DEFENSE_IDEMPOTENCY=false` | `IdempotencyService` (`@Value`) |
-| ⑥ dedup | env `CONSISTENCY_DEFENSE_DEDUP=false` | 양 모듈 `IdempotentEventHandler` (`@Value`) |
-| ③ 보상(환불) | env `CONSISTENCY_DEFENSE_REFUND=false` | userApi `RefundConsumer` (`@ConditionalOnProperty`) |
-| ④ 잔액 검증 | env `CONSISTENCY_DEFENSE_BALANCE_CHECK=false` | userApi `CustomerBalanceHistoryService` (`@Value`) |
-| ②⑤ @Version | 소스 오버레이(빌드 중에만) → `:control` 이미지 | `control/overlay/{ProductItem,Customer}.java` |
+| ① 멱등 게이트 | `execute()` 가 게이트 없이 매 요청 실행 | `orderApi/.../idempotency/IdempotencyService.java` |
+| ② 재고 낙관적 락 | 엔티티 `@Version` 제거 | `orderApi/.../domain/ProductItem.java` |
+| ③ 환불 보상 | `RefundConsumer` 가 이벤트만 소비, 환불 안 함 | `userApi/.../saga/consumer/RefundConsumer.java` |
+| ④ 잔액 검증 | `NOT_ENOUGH_BALANCE` 검사 제거(음수 허용) | `userApi/.../service/customer/CustomerBalanceHistoryService.java` |
+| ⑤ 잔액 낙관적 락 | 엔티티 `@Version` 제거 | `userApi/.../domain/customer/Customer.java` |
+| ⑥ dedup | `processed_events` 검사 제거(+ userApi 는 락 재시도 제거) | `orderApi`·`userApi` `.../saga/IdempotentEventHandler.java` |
 
-①③④⑥ 플래그는 **기본값을 각 모듈 `application.yml` 에 `consistency.defense.*: true` 로 명시**(= treatment/현재 동작).
-`docker-compose.control.yml` 이 **env 로 override** 해 control 에서만 false 로 내린다(env 가 yaml 보다 우선순위 높음, 재빌드 불필요).
-②⑤ 는 JPA `@Version` 이라 프로퍼티로 못 꺼서 `:control` 이미지(오버레이)가 담당한다.
-`control/build-control-images.sh` 는 오버레이를 **빌드 중에만** 덮어쓰고 `trap` 으로 원본을 복구한다(운영 소스 오염 없음).
+`control/build-control-images.sh` 가 오버레이(소스트리 미러)를 적용 → 무방어 jar 빌드 → `:control` 태깅 →
+`trap` 으로 **원본을 항상 복구**(운영 소스 오염 없음). control 실행은 반드시 `--no-build`(안 그러면 현재 소스로
+재빌드해 `:control` 을 오염). **주의**: 오버레이는 원본과 "방어만 다르게" 유지해야 한다 — 원본 서비스 코드를
+크게 바꾸면 측정 전 오버레이를 갱신할 것(불일치 시 빌드가 컴파일 에러로 시끄럽게 실패한다).
 
 ## 알려진 제약 / 정직성
 

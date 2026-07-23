@@ -54,15 +54,6 @@ spring:
         timeout: 5000
         writetimeout: 5000
 
-# ADR-008 정합성 통합 시나리오: 방어 on/off 토글 (기본 true = 방어 ON = 현재/treatment 동작).
-#   control(무방어) 측정 시 docker-compose.control.yml 이 env(CONSISTENCY_DEFENSE_*)로 false override.
-#   ⑤잔액락(@Version)은 프로퍼티로 못 꺼서 control/build-control-images.sh 소스 오버레이가 담당(여기 없음).
-consistency:
-  defense:
-    dedup: true          # ⑥ processed_events dedup (IdempotentEventHandler)
-    refund: true         # ③ 재고 실패→환불 보상 (RefundConsumer)
-    balance-check: true  # ④ 잔액 부족 검증 (CustomerBalanceHistoryService)
-
 # ADR-005: Eureka 클라이언트 등록
 eureka:
   client:

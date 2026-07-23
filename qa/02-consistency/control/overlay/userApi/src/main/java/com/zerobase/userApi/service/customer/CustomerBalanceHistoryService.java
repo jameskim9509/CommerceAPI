@@ -10,6 +10,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// =============================================================================
+// [ADR-008 control 무방어 오버레이] 원하는 장애 ④ 잔액 부족→결제 실패 방어(잔액 검증) 제거.
+//   NOT_ENOUGH_BALANCE 검사를 없애 음수 잔액을 허용 → PaymentFailed 분기가 사라지고 잔액이 음수로 붕괴.
+//   빌드 중에만 원본 위에 덮어씀. 원본과 NOT_ENOUGH_BALANCE 검사 유무만 다르다: userApi/.../service/customer/CustomerBalanceHistoryService.java
+// =============================================================================
 @Service
 @RequiredArgsConstructor
 public class CustomerBalanceHistoryService {
@@ -32,10 +37,7 @@ public class CustomerBalanceHistoryService {
                                                  .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND))
                                  ).build());
 
-         if(customerBalanceHistory.getChangeMoney() + form.getMoney() < 0)
-         {
-             throw new CustomException(ErrorCode.NOT_ENOUGH_BALANCE);
-         }
+         // (control) ④ 잔액 부족 검증(NOT_ENOUGH_BALANCE) 제거 — 음수 잔액 허용.
 
          customerBalanceHistory = CustomerBalanceHistory.builder()
                  .changeMoney(customerBalanceHistory.getChangeMoney() + form.getMoney())
