@@ -4,7 +4,7 @@
 
 정합성관련 상황(중복결제 · 초과판매 · 환불 · 동시 다중 주문시 잔액 Lost Update · 이벤트 중복/역순)이 **한 부하 안에서 동시에 발화**할 때 최종 DB 상태가 정합함(**집계 KPI `N→r`**)을 입증한다.
 
-> 이 폴더는 "실행 가능한 하네스"를 제공하며, 실측은 각 브랜치(무방어/방어)에서 QA 를 돌린 뒤 [results/MEASUREMENT_REPORT.md](results/MEASUREMENT_REPORT.md) 에 채운다.
+> 이 디렉토리는 "실행 가능한 하네스"를 제공하며, 실측은 각 브랜치(무방어/방어)에서 QA 를 돌린 뒤 [results/MEASUREMENT_REPORT.md](results/MEASUREMENT_REPORT.md) 에 채운다.
 
 ## 무엇을 발화·검증하는가
 
@@ -42,7 +42,7 @@ qa/02-consistency/
 ├── verify-consistency.sh        정합성 검증
 ├── k6/load-test-consistency.js  통합 시나리오 스크립트
 ├── seed/                        시드 데이터
-│   └── order.sql    
+│   └── order.sql  
 └── results/                     실행 산출물
 ```
 
@@ -98,14 +98,12 @@ diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p
 
 1. **K6 테스트 종료**
 2. 타임아웃만큼 대기
-3. DB 불변식 위반 개수 체크
+3. DB 불변식 위반 개수 체크 (① + ② + ③)
 
-| 불변식                        | 위반 개수 체크                                                                                |
-| ----------------------------- | --------------------------------------------------------------------------------------------- |
-| ① 멱등성                     | duplicate_order_responses 건수 (k6)                                                           |
-| ② 초과판매                   | (count<0 행 수) + \|초기재고−현재재고−CONFIRMED 수량\| + max(0, CONFIRMED 수량−초기재고)   |
-| ③ 결제·재고 정합성           | (PENDING/PAID 행 수) + (outbox 미발행 행 수, 양 DB) + (음수 잔액 행 수)                      |
+| 불변식               | 위반 개수 체크                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| ① 멱등성            | duplicate_order_responses 건수 (k6)                                                        |
+| ② 초과판매          | (count<0 행 수) +\|초기재고−현재재고−CONFIRMED 수량\| + max(0, CONFIRMED 수량−초기재고) |
+| ③ 결제·재고 정합성 | (PENDING/PAID 행 수) + (outbox 미발행 행 수, 양 DB) + (음수 잔액 행 수)                    |
 
-- 집계 **N = ① + ② + ③ 의 합** ([verify-consistency.sh](verify-consistency.sh))
-- **돈 보존은 별도 판정** — 누수(원) = (초기잔액합 − 현재잔액합) − Σ CONFIRMED total_price = 0 이어야 한다.
-  원(₩) 단위라 행 수 합계 N 에 더하지 않고 0 여부만 따로 본다.
+> **돈 누수** = (초기잔액합 − 현재잔액합) − Σ CONFIRMED total_price
