@@ -7,7 +7,7 @@
 정합함을, **무방어(control) vs 방어(treatment) 집계 KPI `N→r`** 와 **교차 DB 불변식**으로 입증한다.
 
 > **측정치는 전부 `⟨측정전⟩`.** 이 폴더는 "실행 가능한 하네스"를 제공하며, 실측은
-> [`run-kpi-matrix.sh`](run-kpi-matrix.sh) 를 실제로 돌린 뒤 [results/MEASUREMENT_REPORT.md](results/MEASUREMENT_REPORT.md) 에 채운다.
+> 각 브랜치(무방어/방어)에서 QA 를 돌린 뒤 [results/MEASUREMENT_REPORT.md](results/MEASUREMENT_REPORT.md) 에 채운다.
 
 ## 무엇을 발화·검증하는가
 
@@ -21,7 +21,7 @@ T3 Redis 멱등키 유실 → 중복 주문 · T4 Kafka 로그 전소 → 이벤
 ## 측정 모델 — 무방어 vs 방어 집계 (N → r)
 
 6개 방어를 **전부 끈 control** 과 **전부 켠 treatment(현재)** 를 **같은 부하·같은 bounded 고정 카오스 스케줄**로
-돌려 교차 DB 불변식 위반 총수를 비교한다.
+돌려 교차 DB 불변식 위반 총수를 비교한다. 두 arm 은 **git 브랜치**로 나뉜다(§실행).
 
 - **control (무방어)** → desired 위반 대량 + 카오스 잔여 ≈ **N**
 - **treatment (현재)** → desired 방어(→0) + 카오스 잔여 ≈ **r** (0 아님)
@@ -39,11 +39,10 @@ T3 Redis 멱등키 유실 → 중복 주문 · T4 Kafka 로그 전소 → 이벤
 
 ```
 qa/02-consistency/
-├── docker-compose.qa.yml        treatment(방어 ON) 스택. name:consist · kafka 4파티션 · redis/kafka ephemeral
-├── docker-compose.control.yml   control 오버레이 — orderapi/userapi 를 :control 이미지(무방어)로 스왑
-├── build-images.sh              treatment 이미지 빌드 (gradle bootJar → compose build)
-├── run-consistency.sh           단일 arm 1회: up→seed→k6+chaos→quiescence→verify→down
-├── run-kpi-matrix.sh            N회 interleaved (treatment/control) → results/KPI-MATRIX.md (median·range)
+├── docker-compose.qa.yml        QA 스택. name:consist · kafka 4파티션 · redis/kafka ephemeral (방어 상태는 브랜치가 결정)
+├── build-images.sh              현재 브랜치 소스로 이미지 빌드 (gradle bootJar → compose build)
+├── run-consistency.sh           1회 실행: up→seed→k6+chaos→quiescence→verify→down (라벨로 arm 구분)
+├── run-repeat.sh                현재 브랜치에서 N회 반복 + 집계 → results/<prefix>-AGGREGATE.md (median·range)
 ├── chaos-schedule.sh            bounded T1–T4 를 부하 진행도(20/40/60/80%)에 앵커해 각 1회 주입
 ├── quiescence-gate.sh           정착 게이트 (outbox=0 ∧ PENDING/PAID=0 ∧ lag=0 이 K회 연속)
 ├── verify-consistency.sh        교차 DB 3대 불변식 / 9개 체크 판정 (+ ① k6 dup 집계)
@@ -51,11 +50,12 @@ qa/02-consistency/
 ├── seed/scenario/
 │   ├── user.sql                 ctrich{1..300}(10M) + ctbroke{1..60}(500) — 고객마다 balance_history 기준행 필수
 │   └── order.sql                hot SKU(id 10001, count 1000) + 정상 SKU 50×5(재고 충분)
-├── control/
-│   └── build-control-images.sh  control/no-defense 브랜치를 git archive 로 격리 빌드 → :control 이미지 (작업소스 무변경)
-└── results/                     실행 산출물 (*-k6-summary.json, *-verify.txt, KPI-MATRIX.md)
+└── results/                     실행 산출물 (*-k6-summary.json, *-verify.txt, *-AGGREGATE.md)
 
-# + git 브랜치 `control/no-defense` = feature − 6개 방어 (무방어 소스; 운영 코드엔 방어-off 스위치 없음)
+# 방어 상태 = git 브랜치 (arm):
+#   control(무방어) = 브랜치 control/no-defense (tag v1) = feature − 6개 방어 (QA 하네스 공유)
+#   treatment(방어) = feature / main
+# 운영 코드엔 방어-off 스위치가 없다(footgun 없음). 무방어 소스는 v1 브랜치에만 존재.
 ```
 
 ## 사전 요구사항
@@ -64,36 +64,32 @@ qa/02-consistency/
 - 호스트 gradle 빌드 (Dockerfile 이 prebuilt `build/libs/*.jar` 를 COPY — Java 17)
 - Windows 는 Git Bash / WSL2 (스크립트가 `MSYS_NO_PATHCONV=1`)
 
-## 실행
+## 실행 — 브랜치 = arm
+
+방어 상태는 **체크아웃한 브랜치**가 결정한다. 각 브랜치에서 같은 QA 를 돌려 두 측정을 얻는다.
 
 ```bash
+# ── control(무방어) 측정: 무방어 브랜치에서 ──
+git checkout v1                        # = control/no-defense (feature − 6방어, QA 공유)
 cd qa/02-consistency
+./build-images.sh                      # 현재 브랜치(무방어) 소스로 이미지 빌드
+ORDER_TARGET=100000 ./run-consistency.sh C-run1     # → results/C-run1-verify.txt = 무방어 N
 
-# (스모크) 작게 무카오스로 하네스 동작 확인 — control 변형버그 pre-flight 에도 사용
-./build-images.sh
-CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh treatment T-smoke
-cat results/T-smoke-verify.txt        # N 이 0 근처면 하네스 정상
+# ── treatment(방어) 측정: 방어 브랜치에서 ──
+git checkout feature/66-consistency-integration-scenario
+cd qa/02-consistency
+./build-images.sh                      # 현재 브랜치(방어) 소스로 이미지 빌드
+ORDER_TARGET=100000 ./run-consistency.sh T-run1     # → results/T-run1-verify.txt = 방어 r
 
-# (전체 KPI 매트릭스) 무방어 N → 방어 r, N회 interleaved
-./run-kpi-matrix.sh 10                 # ORDER_TARGET/ARRIVAL_RATE/CHAOS 는 env 로 조절
-cat results/KPI-MATRIX.md
-```
-
-### 수동 1회 측정 (현실적 최소 — 각 arm 1회씩)
-
-매트릭스 자동화(≥10회) 없이 손으로 한 번씩만 돌리는 경로. control/treatment 이미지를 각각 빌드해두고
-arm 당 1회 실행한 뒤 `results/*-verify.txt` 의 N(control) vs r(treatment) 를 비교한다.
-
-```bash
-./build-images.sh                                       # treatment 이미지
-./control/build-control-images.sh                       # control 이미지 (:control)
-ORDER_TARGET=100000 ./run-consistency.sh treatment T-run1
-ORDER_TARGET=100000 ./run-consistency.sh control   C-run1
+# ── 비교 (KPI: N → r) ──
 diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p' results/T-run1-verify.txt)
 ```
 
-> ⚠ **N=1 은 점추정**이다. ADR-008 §재현 하네스 4 는 잔여 blast-radius 때문에 ≥10회 interleaved(중앙값·범위)를
-> 권장한다. 수동 1회는 방향성(N≫r) 확인용이며, 리포트에 **"N=1 point estimate"** 로 명시할 것(단일 수치 세탁 금지).
+- **스모크**(하네스 동작 확인): `CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh smoke`
+- **N회 반복**(≥10 권장): 각 브랜치에서 `./run-repeat.sh 10 C`(무방어) / `./run-repeat.sh 10 T`(방어) → `results/{C,T}-AGGREGATE.md` 중앙값 비교
+
+> ⚠ **N=1 은 점추정**이다(ADR-008 §재현 하네스 4 는 ≥10회 권장). 리포트에 **"N=1 point estimate"** 로 명시할 것.
+> ⚠ **무방어 브랜치를 방어 브랜치에 merge 하지 말 것** — 방어가 사라진다. main 으로 가져갈 건 측정 리포트(숫자)뿐.
 
 ## 통합 시나리오 구성 (기본 10만 건)
 
@@ -128,13 +124,13 @@ diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p
 > ⚠ **T4 거짓 PASS**: "outbox 미발행=0"은 `sent_at IS NULL` 만 세므로 kafka 로그 전소(T4) 시 이미 sent 표기라
 > 손실을 놓친다 → T4 는 **돈 보존·PENDING/PAID 잔여**로만 잡히는 은닉 손실이다.
 
-## control(무방어) 빌드 — 무방어 전용 브랜치
+## control(무방어) = 무방어 전용 브랜치 (arm)
 
 **운영 코드(feature = treatment)에는 방어를 끄는 스위치가 일절 없다** — prod 에서 실수로 방어가 꺼지는
-footgun 을 원천 차단한다. control(무방어) 소스는 **별도 git 브랜치 `control/no-defense`(= feature − 6개 방어)**
-로 관리하고, `:control` 이미지는 그 브랜치에서 빌드한다.
+footgun 을 원천 차단한다. 무방어 소스는 **별도 git 브랜치 `control/no-defense`(tag `v1`) = feature − 6개 방어**
+에만 존재하며, 그 브랜치를 체크아웃해 같은 QA 를 돌리면 control 측정이 된다(별도 control 이미지·오버레이·토글 없음).
 
-| 방어 | 제거 (control/no-defense 브랜치에서) |
+| 방어 | 제거 (control/no-defense 브랜치, 최소 diff) |
 |---|---|
 | ① 멱등 게이트 | `IdempotencyService.execute()` 가 게이트 없이 매 요청 실행 |
 | ② 재고 낙관적 락 | `ProductItem` 의 `@Version` 삭제 |
@@ -143,26 +139,26 @@ footgun 을 원천 차단한다. control(무방어) 소스는 **별도 git 브�
 | ⑤ 잔액 낙관적 락 | `Customer` 의 `@Version` 삭제 |
 | ⑥ dedup | `IdempotentEventHandler`(양 모듈)의 `processed_events` 검사 삭제 |
 
-`control/build-control-images.sh` 는 `control/no-defense` 트리를 **git archive 로 임시 폴더에 풀어 격리 빌드** →
-`commerce-{orderapi,userapi}:control` 태깅한다(**작업 소스를 전혀 안 건드림** — 오버레이의 cp/trap-복구 없음).
-`docker-compose.control.yml` 은 그 이미지로 스왑만 하고, control 실행은 반드시 `--no-build`.
+**왜 브랜치인가** — env 토글은 무방어 분기가 운영 이미지에 실려 footgun; 소스 오버레이는 원본이 바뀌면 조용히
+어긋남(drift). 브랜치는 **footgun 0(운영 pristine)** + **drift 관리**(아래) + **@Version 자연 처리**(그냥 삭제)를 다 만족한다.
 
-**드리프트 관리**: 한 번 측정이면 `control/no-defense` 를 feature 최신에서 뽑았으니 drift 0.
-반복 측정 시엔 `git checkout control/no-defense && git merge feature` 로 상류 변경을 반영한다 —
-**충돌 지점이 곧 방어 제거 지점**이라, 오버레이의 "조용한 drift"와 달리 어긋남이 눈에 보인다.
+**드리프트 관리**: 한 번 측정이면 `control/no-defense` 를 feature 최신에서 뽑았으니 drift 0. 반복/재측정 시엔
+`git switch control/no-defense && git merge feature` 로 상류 변경을 반영한다 — **충돌 지점이 곧 방어 제거 지점**이라,
+오버레이의 "조용한 drift"와 달리 어긋남이 눈에 보인다.
 
-### control/no-defense 브랜치 (재)생성
+### control/no-defense 브랜치 (재)생성 / 갱신
 
 ```bash
 git switch -c control/no-defense feature/66-consistency-integration-scenario   # 최초 1회
-# 6개 방어 제거: @Version(ProductItem·Customer) 삭제 + 멱등 게이트/dedup/환불/잔액검증 제거
+# 6개 방어 최소 diff 제거: @Version(ProductItem·Customer) 삭제 + 멱등 게이트/dedup/환불/잔액검증 제거
 git commit -am "chore(control): 무방어 빌드 — 6종 방어 제거"
+git tag -a v1 -m "ADR-008 control 무방어 스냅샷"
 git switch feature/66-consistency-integration-scenario
-# 이후 반복 측정 전: git switch control/no-defense && git merge feature (충돌=방어지점 확인) && git switch -
+# 이후 상류 변경 반영: git switch control/no-defense && git merge feature (충돌=방어지점) && git tag -f v1 && git switch -
 ```
 
 ## 알려진 제약 / 정직성
 
-- 수치는 전부 `⟨측정전⟩` — 카오스 하네스·무방어 빌드는 이번에 구현했으나 ≥10회 100k 매트릭스는 아직 미실행.
+- 수치는 전부 `⟨측정전⟩` — 하네스·무방어 브랜치는 구현했으나 ≥10회 100k 측정은 아직 미실행.
 - 집계 KPI 는 **개별 귀속 불가**(§한계). 단일 헤드라인 %로 세탁하지 않는다.
 - 근본 수정(DLQ/정산 큐, 아웃박스 poison-row 격리 등)은 본 시나리오 범위 밖 — ADR-008 §후속 과제.

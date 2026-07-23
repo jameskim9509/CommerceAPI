@@ -1,28 +1,25 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ADR-008 정합성 통합 시나리오 — 단일 arm 1회 실행 오케스트레이션
+# ADR-008 정합성 통합 시나리오 — 1회 실행 오케스트레이션 (브랜치 = arm)
 #
-#   run-consistency.sh <arm> <run_label>
-#     arm       : treatment(방어 ON, 현재) | control(무방어, 6종 OFF)
-#     run_label : 결과 파일 접두 (예: T-run1 / C-run1)
+#   run-consistency.sh <run_label>
 #
-# 동작: down -v → up(orderapi ×N) → ready 대기 → 시드(functional→scenario)
+# ★ 방어 상태는 "지금 체크아웃한 git 브랜치"가 결정한다 (control 오버레이/이미지 없음):
+#     - 무방어 브랜치(control/no-defense, tag v1) 에서 실행 → control 측정 (라벨 예: C-run1)
+#     - 방어 브랜치(feature/main) 에서 실행       → treatment 측정 (라벨 예: T-run1)
+#   실행 전 반드시 그 브랜치 소스로 이미지를 빌드해 둘 것: ./build-images.sh
+#
+# 동작: down -v → up(orderapi ×N, --no-build) → ready 대기 → 시드(functional→scenario)
 #       → k6(부하) + chaos(bounded T1–T4) 동시 → k6 종료 → 정착(quiescence) → verify(교차 DB 9체크) → down -v
 #
-# 전제(이미지 사전 빌드):
-#   treatment → ./build-images.sh
-#   control   → ./control/build-control-images.sh   (commerce-orderapi:control / commerce-userapi:control)
-#   (matrix 실행 시 run-kpi-matrix.sh 가 한 번에 빌드)
-#
 # 환경변수: ORDER_TARGET(100000) ARRIVAL_RATE(200) N_ORDERAPI(4) CHAOS(on|off) RICH_POOL(300) BROKE_POOL(60)
-#           READY_WAIT(60) KEEP(0: 종료 후 down -v)
+#           READY_WAIT(60) CHAOS_GRACE(60) KEEP(0: 종료 후 down -v)
 # =============================================================================
 set -uo pipefail
 export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")"
 
-ARM="${1:?arm required: treatment|control}"
-LABEL="${2:?run_label required (예: T-run1)}"
+LABEL="${1:?run_label required (예: C-run1 / T-run1)}"
 
 ORDER_TARGET="${ORDER_TARGET:-100000}"
 ARRIVAL_RATE="${ARRIVAL_RATE:-200}"
@@ -33,20 +30,17 @@ BROKE_POOL="${BROKE_POOL:-60}"
 READY_WAIT="${READY_WAIT:-60}"
 KEEP="${KEEP:-0}"
 
-case "$ARM" in
-    treatment) COMPOSE_ARGS="-f docker-compose.qa.yml" ;;
-    control)   COMPOSE_ARGS="-f docker-compose.qa.yml -f docker-compose.control.yml" ;;
-    *) echo "arm 은 treatment|control 이어야 합니다"; exit 1 ;;
-esac
+COMPOSE_ARGS="-f docker-compose.qa.yml"
 export COMPOSE_ARGS ORDER_TARGET ARRIVAL_RATE RICH_POOL BROKE_POOL
 export RUN_LABEL="$LABEL"
 
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
 mkdir -p results
 echo "================================================================="
-echo " ARM=$ARM LABEL=$LABEL | target=$ORDER_TARGET rate=$ARRIVAL_RATE/s orderapi=$N_ORDERAPI chaos=$CHAOS"
+echo " LABEL=$LABEL | branch=$BRANCH | target=$ORDER_TARGET rate=$ARRIVAL_RATE/s orderapi=$N_ORDERAPI chaos=$CHAOS"
 echo "================================================================="
 
-# 1) 정리 + 기동 (db-seed/k6 제외, --no-build: 이미지는 사전 빌드됨)
+# 1) 정리 + 기동 (db-seed/k6 제외, --no-build: 이미지는 build-images.sh 로 사전 빌드)
 docker compose $COMPOSE_ARGS down -v --remove-orphans 2>&1 | tail -2
 echo "[$LABEL] 스택 기동 (orderapi ×$N_ORDERAPI) ..."
 docker compose $COMPOSE_ARGS up -d --no-build --scale orderapi="$N_ORDERAPI" \
@@ -76,13 +70,12 @@ if [ "$CHAOS" = "on" ]; then
     ( COMPOSE_ARGS="$COMPOSE_ARGS" ORDER_TARGET="$ORDER_TARGET" bash chaos-schedule.sh ) &
     CHAOS_PID=$!
 else
-    echo "[$LABEL] CHAOS=off — 무카오스 baseline/pre-flight (control 변형버그 오계수 방지용 스모크에도 사용)"
+    echo "[$LABEL] CHAOS=off — 무카오스 baseline/pre-flight (무방어 브랜치 변형버그 스모크에도 사용)"
 fi
 
 wait "$K6_PID" || true
 echo "[$LABEL] k6 종료"
-# 부하 종료 후 카오스가 부하보다 오래 살지 않도록 grace 뒤 종료 (진행도 정체로 A80 앵커 미도달이어도 안전).
-#   grace 는 진행 중인 주입(예: T4 kafka 재생성)이 끝날 시간을 준다.
+# 부하 종료 후 카오스가 부하보다 오래 살지 않도록 grace 뒤 종료 (진행도 정체로 A80 앵커 미도달이어도 안전)
 if [ -n "$CHAOS_PID" ]; then
     ( sleep "${CHAOS_GRACE:-60}"; kill "$CHAOS_PID" 2>/dev/null ) & GRACE_KILLER=$!
     wait "$CHAOS_PID" 2>/dev/null || true
@@ -103,4 +96,4 @@ if [ "$KEEP" = "0" ]; then
 else
     echo "[$LABEL] KEEP=1 — 스택 유지 (수동 조사용). 정리: docker compose $COMPOSE_ARGS down -v"
 fi
-echo "[$LABEL] 완료 ✓ → results/${LABEL}-verify.txt , results/${LABEL}-k6-summary.json"
+echo "[$LABEL] 완료 ✓ (branch=$BRANCH) → results/${LABEL}-verify.txt , results/${LABEL}-k6-summary.json"
