@@ -38,11 +38,12 @@ qa/02-consistency/
 ├── run-consistency.sh           시나리오 1회 실행 + 집계
 ├── run-repeat.sh                시나리오 N회 반복 + 집계
 ├── chaos-schedule.sh            주변 장애 주입
-├── quiescence-gate.sh           시나리오 종료 대기
+├── quiescence-gate.sh           정착 대기 (비동기 흐름 종료 확인)
 ├── verify-consistency.sh        정합성 검증
 ├── k6/load-test-consistency.js  통합 시나리오 스크립트
 ├── seed/                        시드 데이터
-│   └── order.sql  
+│   ├── user.sql
+│   └── order.sql
 └── results/                     실행 산출물
 ```
 
