@@ -10,20 +10,16 @@ orderApi 인스턴스를 1 / 2 / 4 로 늘리면서 Gateway + Eureka LoadBalance
 
 ```
 qa/01-load-balancing/
-├── docker-compose.qa.yml           측정 전용 compose (작은 자원 한도 + k6 runner + db-seed). name: qa 고정
+├── docker-compose.qa.yml           측정 전용 compose (작은 자원 한도 + k6 runner + db-seed). name: qa-load-balancing 고정
 ├── run-experiments.sh              E1 / E2 / E3 자동 실행 (cart→order 워크로드)
 ├── run-experiments-order-only.sh   E1o / E2o / E3o (order-only 워크로드 — cart_add throttle 제거)
 ├── monitor-stats.sh                부하 중 docker stats + MySQL + Eureka 를 5초 간격 캡쳐
 ├── parse_results.py                k6 summary → 핵심 지표 표
 ├── analyze_bottleneck.py           엔드포인트별 latency 분해 (병목 식별)
 ├── analyze_monitoring.py           CPU/MySQL 모니터링 CSV → avg/p95/max
-├── seed/
-│   ├── functional/                 베이스 픽스처 (모든 환경 자동 주입 — 루트 compose·k8s 도 이 경로 참조)
-│   │   ├── user.sql                seller 1·2 + customer rich/poor/zero (id 9001+)
-│   │   └── order.sql               QA-% 상품 5 + item 8 (품절 엣지케이스 포함, id 9001+)
-│   └── load/                       k6 부하 전용 (functional 위에 추가 주입)
-│       ├── user.sql                1000 customer (customer{i}@qa.test, verify=true)
-│       └── order.sql               100 product × 5 product_item (id 1..500, 재고 1M)
+├── seed/                           이 시나리오의 자립 시드 (자기 seller + 부하 더미)
+│   ├── user.sql                    seller1(id=1) + 1000 customer (customer{i}@qa.test, verify=true)
+│   └── order.sql                   100 product × 5 product_item (id 1..500, 재고 1M, seller_id=1)
 ├── k6/
 │   ├── load-test.js                로그인→카트→주문, ramping-vus 0→200, 5 분
 │   └── load-test-order-only.js     카트 사전적재 후 order 만 (burst)
@@ -77,15 +73,11 @@ cd qa/01-load-balancing
 # 1) 스택 기동 (예: 2 인스턴스)
 docker compose -f docker-compose.qa.yml up -d --scale orderapi=2
 
-# 2) 시드 (스택 ready 후) — functional 베이스 → load 레이어 순서 (functional 이 seller 1·2 점유)
+# 2) 시드 (스택 ready 후) — user.sql(seller+customer) → order.sql(상품) 순서
 docker compose -f docker-compose.qa.yml exec -T mysql-user \
-    mysql -uroot -proot user < seed/functional/user.sql
+    mysql -uroot -proot user < seed/user.sql
 docker compose -f docker-compose.qa.yml exec -T mysql-order \
-    mysql -uroot -proot orders < seed/functional/order.sql
-docker compose -f docker-compose.qa.yml exec -T mysql-user \
-    mysql -uroot -proot user < seed/load/user.sql
-docker compose -f docker-compose.qa.yml exec -T mysql-order \
-    mysql -uroot -proot orders < seed/load/order.sql
+    mysql -uroot -proot orders < seed/order.sql
 
 # 3) k6 부하 테스트 (★ --no-deps 필수: 없으면 --scale 이 1 로 리셋됨)
 EXPERIMENT_LABEL=E2 docker compose -f docker-compose.qa.yml run --rm --no-deps k6 \
@@ -95,39 +87,38 @@ EXPERIMENT_LABEL=E2 docker compose -f docker-compose.qa.yml run --rm --no-deps k
 docker compose -f docker-compose.qa.yml down -v
 ```
 
-## 시드 구성 (functional / load)
+## 시드 구성 (자립)
 
-시드는 용도별로 두 묶음이며 **한 DB 에서 충돌 없이 공존**한다:
+이 시나리오의 `seed/` 는 **자립적**이다 — 부하 테스트에 필요한 모든 것을 스스로 만들고,
+상시환경 공통셋([루트 seed/](../../seed/))이나 다른 시나리오에 의존하지 않는다:
 
-| | `seed/functional/` | `seed/load/` |
+| | `seed/user.sql` | `seed/order.sql` |
 |---|---|---|
-| 용도 | 시나리오·수동 테스트 (품절·잔액부족 등 엣지케이스) | k6 부하 |
-| 규모 | seller 2 + customer 3, 상품 5 / item 8 | customer 1000, 상품 100 / item 500 |
-| ID 범위 | 9001+ (seller 만 1·2) | product/item 1..500 |
-| 비밀번호 | `password1!` | `password` |
-| cleanup | 자기 행만 (`customer-%`, `seller1/2`, `QA-%`) | 자기 행만 (`customer<digits>`, `QaProduct%`) |
-| 주입 | **모든 환경 자동** (db-seed) | qa 스택에서 functional 위에 추가 |
+| 내용 | seller1(id=1) + customer 1000 (`customer{i}@qa.test`) | product 100 / item 500 (id 1..500, `seller_id=1`) |
+| 규모 | 판매자 1 + 고객 1000 | 상품 100 / item 500, 재고 1M |
+| cleanup | 자기 행만 (`seller id=1`, `customer<digits>`) | 자기 행만 (`QaProduct%`) |
 
-- 공존 규칙: functional 이 **seller id 1·2 를 점유**하고, load 의 `seller_id=1` 이 이를 재사용한다 → functional 이 항상 먼저 주입돼야 한다.
-- 이메일 검증 단계 우회: SQL 로 `verify=true` 직접 INSERT
+- 주입 순서: **user.sql → order.sql** (order 의 `seller_id=1` 이 user.sql 의 seller 를 참조).
+- qa 스택은 `name: qa` 로 별도 DB 라, 자기 seller(id=1)를 만들어도 상시환경과 같은 DB 에 공존하지 않아 충돌이 없다.
+- 이메일 검증 단계 우회: SQL 로 `verify=true` 직접 INSERT.
+
+> 상시 테스트 환경(compose/k8s)의 공통 베이스 픽스처(seller 1·2, 엣지케이스 상품·고객)는
+> 이 시나리오와 분리돼 **루트 [seed/](../../seed/)** 에 있다.
 
 ## 자동 시드 (db-seed)
 
-스키마는 Flyway(앱 부팅 시 생성)라 MySQL `/docker-entrypoint-initdb.d/` 로는 못 넣는다(테이블 생성 전 실행). 그래서 **마이그레이션 후 테이블을 폴링하다 주입하는 1회용 러너**를 둔다 — functional 시드를 자동 주입:
+스키마는 Flyway(앱 부팅 시 생성)라 MySQL `/docker-entrypoint-initdb.d/` 로는 못 넣는다(테이블 생성 전 실행). 그래서 **마이그레이션 후 테이블을 폴링하다 주입하는 1회용 러너**를 둔다:
 
-- **docker compose** (`docker-compose.test.yml`, `qa/01-load-balancing/docker-compose.qa.yml`): `db-seed` 서비스. 평범한 `up` 시 자동 실행.
-  - `run-experiments*.sh` 는 `up` 의 서비스 목록에서 db-seed 를 제외하고, functional → load 를 명시적으로 주입한다.
-- **로컬 k8s** (`k8s/overlays/test`): `db-seed` Job (+ `qa/01-load-balancing/seed/functional/` 을 출처로 한 ConfigMap). 트리 밖 파일 참조라 적용 시:
+- 이 시나리오의 `docker-compose.qa.yml` `db-seed` 서비스: 평범한 `up` 시 **시나리오 자립 시드**(`./seed`)를 자동 주입.
+  - `run-experiments*.sh` 는 `up` 의 서비스 목록에서 db-seed 를 제외하고 user → order 를 명시적으로 주입한다 (중복 방지).
 
-  ```bash
-  kustomize build k8s/overlays/test --load-restrictor LoadRestrictionsNone | kubectl apply -f -
-  # 재적용 시 Job 은 불변 → kubectl delete job db-seed -n commerce 후 재적용
-  ```
-
-  → 테스트 데이터가 들어간 채로 시나리오를 바로 검증할 수 있다.
-
-> **참고**: `seed/functional/` 은 이 시나리오 폴더 안에 있지만 **프로젝트 전역 베이스 픽스처**다.
-> 루트 `docker-compose.test.yml` 과 `k8s/overlays/test` 도 이 경로를 단일 출처로 참조하므로, 수정 시 그 소비자들에도 영향을 준다.
+> 상시환경(`docker-compose.test.yml`, `k8s/overlays/test`)의 db-seed 는 이 시나리오가 아니라
+> **루트 [seed/](../../seed/)** 공통 베이스를 주입한다. k8s 는 트리 밖(`../../../seed/`) 참조라 적용 시:
+>
+> ```bash
+> kustomize build k8s/overlays/test --load-restrictor LoadRestrictionsNone | kubectl apply -f -
+> # 재적용 시 Job 은 불변 → kubectl delete job db-seed -n commerce 후 재적용
+> ```
 
 ## 멱등성 검증
 
@@ -150,8 +141,8 @@ k6 워크로드는 5 % 확률로 **같은 Idempotency-Key 로 두 번 전송**.
 
 ## 알려진 제약
 
-- 시드 SQL 의 seller_id 는 1 로 고정 (functional 이 seller1=1 점유 → load 가 재사용. functional → load 순서 보장)
+- 시드 SQL 의 seller_id 는 1 로 고정 (user.sql 이 seller1=1 생성 → order.sql 이 참조. user.sql → order.sql 순서 보장)
 - Redis 카트는 k6 가 매 반복마다 동적으로 추가 (시드 SQL 범위 밖)
 - docker-compose `deploy.resources.limits` 는 Docker Desktop 에서 동작
   (Linux daemon 의 Swarm 모드와는 다르지만 단일 노드에서는 적용됨)
-- 컨테이너명은 `docker-compose.qa.yml` 의 `name: qa` 로 `qa-*` 고정 — `monitor-stats.sh` 의 `qa-mysql-order-1` 등 하드코딩이 이에 의존
+- 컨테이너명은 `docker-compose.qa.yml` 의 `name: qa-load-balancing` 으로 `qa-load-balancing-*` 고정 — `monitor-stats.sh` 의 `qa-load-balancing-mysql-order-1` 등 하드코딩이 이에 의존

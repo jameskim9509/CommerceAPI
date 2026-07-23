@@ -11,11 +11,12 @@
 #   docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d --scale orderapi=N
 #   docker compose -f qa/01-load-balancing/docker-compose.qa.yml down -v               # 정리 (볼륨 포함)
 #
-# ★ name: qa 고정 — 컨테이너명을 qa-* 로 유지해야 monitor-stats.sh 의 `qa-` 접두사/
-#   `qa-mysql-order-1` 하드코딩이 그대로 동작한다 (폴더명이 프로젝트명이 되는 기본 동작 무력화).
+# ★ name: qa-load-balancing — 시나리오별 고유 프로젝트명 (형제 시나리오 qa-consist 와 대칭).
+#   컨테이너명이 qa-load-balancing-* 로 고정돼 monitor-stats.sh 의 접두사/
+#   `qa-load-balancing-mysql-order-1` 하드코딩이 동작한다 (폴더명이 프로젝트명이 되는 기본 동작 무력화).
 # =============================================================================
 
-name: qa
+name: qa-load-balancing
 
 services:
   mysql-user:
@@ -28,13 +29,13 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - mysql-user-qa-data:/var/lib/mysql
+      - mysql-user-data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
       interval: 5s
       timeout: 5s
       retries: 30
-    networks: [commerce-qa]
+    networks: [commerce]
 
   mysql-order:
     image: mysql:8.0
@@ -46,13 +47,13 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - mysql-order-qa-data:/var/lib/mysql
+      - mysql-order-data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
       interval: 5s
       timeout: 5s
       retries: 30
-    networks: [commerce-qa]
+    networks: [commerce]
 
   redis:
     image: redis:7-alpine
@@ -63,7 +64,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [commerce-qa]
+    networks: [commerce]
 
   kafka:
     image: bitnamilegacy/kafka:3.7  # bitnami 가 namespace 를 옮겨 기존 태그는 docker.io 에서 사라짐
@@ -85,7 +86,7 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
-    networks: [commerce-qa]
+    networks: [commerce]
 
   eureka:
     build:
@@ -104,7 +105,7 @@ services:
         limits:
           cpus: '0.5'
           memory: 512M
-    networks: [commerce-qa]
+    networks: [commerce]
 
   userapi:
     build:
@@ -132,7 +133,7 @@ services:
         limits:
           cpus: '2'
           memory: 1G
-    networks: [commerce-qa]
+    networks: [commerce]
 
   # ADR-005 측정 대상. --scale orderapi=N 으로 N 인스턴스 기동.
   orderapi:
@@ -161,7 +162,7 @@ services:
         limits:
           cpus: '2'
           memory: 1G
-    networks: [commerce-qa]
+    networks: [commerce]
 
   gateway:
     build:
@@ -181,12 +182,12 @@ services:
         limits:
           cpus: '1'
           memory: 768M
-    networks: [commerce-qa]
+    networks: [commerce]
 
-  # 기능/시나리오 베이스 시드 자동 주입 (1회용).
-  #   스키마는 Flyway(앱 부팅 시)가 만들므로 테이블이 생길 때까지 폴링 후 functional 시드 주입.
-  #   run-experiments*.sh 는 up 의 서비스 목록에서 db-seed 를 제외하므로 부하 실험엔 영향 없고,
-  #   직접 `docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d` 하면 functional 시드가 자동 주입된다.
+  # 시나리오 자립 시드 자동 주입 (1회용). 이 시드가 자기 seller + 부하 더미를 모두 만든다.
+  #   스키마는 Flyway(앱 부팅 시)가 만들므로 테이블이 생길 때까지 폴링 후 시나리오 seed 주입.
+  #   run-experiments*.sh 는 up 의 서비스 목록에서 db-seed 를 제외하고 명시적으로 시드하므로 중복 없음.
+  #   직접 `docker compose -f qa/01-load-balancing/docker-compose.qa.yml up -d` 하면 시나리오 seed 가 자동 주입된다.
   db-seed:
     image: mysql:8.0
     restart: "no"
@@ -200,7 +201,7 @@ services:
       orderapi:
         condition: service_started
     volumes:
-      - ./seed/functional:/seed:ro
+      - ./seed:/seed:ro
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -208,11 +209,11 @@ services:
         echo "[db-seed] waiting for Flyway-created tables ..."
         until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
         until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
-        echo "[db-seed] seeding functional fixtures ..."
+        echo "[db-seed] seeding scenario self-contained fixtures ..."
         mysql -h mysql-user  -uroot -proot user   < /seed/user.sql
         mysql -h mysql-order -uroot -proot orders < /seed/order.sql
         echo "[db-seed] done."
-    networks: [commerce-qa]
+    networks: [commerce]
 
   # k6 부하 발생기. 각 실험마다 별도로 실행: docker compose run k6
   k6:
@@ -227,13 +228,13 @@ services:
       EXPERIMENT_LABEL: ${EXPERIMENT_LABEL:-unknown}
     depends_on:
       gateway: { condition: service_started }
-    networks: [commerce-qa]
+    networks: [commerce]
     # k6 run 은 run-experiments 스크립트에서 명시적으로 호출
 
 networks:
-  commerce-qa:
+  commerce:
     driver: bridge
 
 volumes:
-  mysql-user-qa-data:
-  mysql-order-qa-data:
+  mysql-user-data:
+  mysql-order-data:

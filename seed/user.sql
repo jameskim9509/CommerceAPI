@@ -1,14 +1,16 @@
 -- =============================================================================
--- 기능/시나리오 QA seed (userApi / user DB) — 모든 환경에 자동 주입되는 "베이스 픽스처"
+-- 상시 테스트 환경 공통 베이스 픽스처 (userApi / user DB)
+--   docker-compose.test.yml · k8s/overlays/test 가 이 파일을 단일 출처로 공유한다
+--   (각 환경의 db-seed 가 Flyway 테이블 생성 후 자동 주입). 목적: 통합테스트·수동 확인
+--   환경이 항상 "같은 세상"으로 부팅되도록 하는 표준 샘플 데이터.
 --   - 비밀번호 평문: password1!  /  BCrypt cost10 hash 아래 사용
 --   - mailgun 실패 환경이므로 verify=TRUE / verification_code=NULL 로 검증 완료 상태
 --   - roles 컬럼 값은 Authority enum 의 getRole() == "ROLE_CUSTOMER" / "ROLE_SELLER"
+--   - seller id 1·2 / customer id 9001+ 를 명시적 고정 PK 로 점유 (안정적 참조용).
+--   - cleanup 은 자기 행만 (customer-%, seller1/2) — 멱등(DELETE+INSERT) 재주입 안전.
 --
--- load(k6) seed 와 한 DB 에서 공존하기 위한 규칙:
---   - seller 는 id 1·2 를 "명시적으로" 점유한다. orderApi product.seller_id=1/2 및
---     load/order.sql 의 seller_id=1 이 이 PK 를 그대로 참조한다 (functional 이 항상 먼저 주입됨).
---   - customer 는 9001+ 고 ID 를 쓴다. load/user.sql 의 customer1..1000 과 절대 겹치지 않게.
---   - cleanup 은 "자기 행"만 (customer-%, seller1/2) — load seed 의 customer<digits> 는 건드리지 않는다.
+-- 주: QA 부하 시나리오(qa/01-load-balancing)는 자기 seed 를 따로 가진 자립 구조라
+--     이 파일과 무관하다 (별도 DB · 별도 seller). 여기서 load seed 를 참조하지 않는다.
 -- =============================================================================
 
 USE `user`;

@@ -38,11 +38,9 @@ for i in "${!experiments[@]}"; do
     echo "[$LABEL] 서비스 ready 대기 ..."
     sleep 60
 
-    echo "[$LABEL] DB 시드 (functional → load) ..."
-    docker compose -f "$COMPOSE_FILE" exec -T mysql-user mysql -uroot -proot user < "$QA_DIR/seed/functional/user.sql"
-    docker compose -f "$COMPOSE_FILE" exec -T mysql-order mysql -uroot -proot orders < "$QA_DIR/seed/functional/order.sql"
-    docker compose -f "$COMPOSE_FILE" exec -T mysql-user mysql -uroot -proot user < "$QA_DIR/seed/load/user.sql"
-    docker compose -f "$COMPOSE_FILE" exec -T mysql-order mysql -uroot -proot orders < "$QA_DIR/seed/load/order.sql"
+    echo "[$LABEL] DB 시드 (user → order) ..."
+    docker compose -f "$COMPOSE_FILE" exec -T mysql-user mysql -uroot -proot user < "$QA_DIR/seed/user.sql"
+    docker compose -f "$COMPOSE_FILE" exec -T mysql-order mysql -uroot -proot orders < "$QA_DIR/seed/order.sql"
 
     echo "[$LABEL] 모니터링 시작 ..."
     bash "$QA_DIR/monitor-stats.sh" "$LABEL" &

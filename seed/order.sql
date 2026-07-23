@@ -1,14 +1,15 @@
 -- =============================================================================
--- 기능/시나리오 QA seed (orderApi / orders DB) — 모든 환경에 자동 주입되는 "베이스 픽스처"
---   - 품절(재고 0)·다중 셀러 등 엣지케이스 포함 (수동/시나리오 테스트용)
+-- 상시 테스트 환경 공통 베이스 픽스처 (orderApi / orders DB)
+--   docker-compose.test.yml · k8s/overlays/test 가 이 파일을 단일 출처로 공유한다
+--   (각 환경의 db-seed 가 Flyway 테이블 생성 후 자동 주입).
+--   - 품절(재고 0)·다중 셀러 등 엣지케이스 포함 (수동/통합 테스트용)
 --   - product_item.version 은 V3 마이그레이션의 DEFAULT 0 사용
---
--- load(k6) seed 와 한 DB 에서 공존하기 위한 규칙:
---   - seller_id 1·2 는 functional/user.sql 이 만든 seller PK 와 일치.
---   - product / product_item id 는 9001+ 를 "명시적으로" 점유한다.
---     load/order.sql 이 1..100 / 1..500 을 강제 INSERT 하므로 그 범위와 절대 겹치면 안 된다.
---   - cleanup 은 'QA-%' 자기 행만 (load 의 'QaProduct%' 는 건드리지 않는다).
+--   - seller_id 1·2 는 user.sql 이 만든 seller PK 와 일치. product/item id 는 9001+ 고정.
+--   - cleanup 은 'QA-%' 자기 행만 — 멱등(DELETE+INSERT) 재주입 안전.
 --     order_items 는 product_item 에 FK 가 없으므로(스냅샷) 이름 기반 삭제로 안전.
+--
+-- 주: QA 부하 시나리오(qa/01-load-balancing)는 자기 seed 를 따로 가진 자립 구조라
+--     이 파일과 무관하다 (별도 DB). 여기서 load seed 를 참조하지 않는다.
 -- =============================================================================
 
 USE orders;
