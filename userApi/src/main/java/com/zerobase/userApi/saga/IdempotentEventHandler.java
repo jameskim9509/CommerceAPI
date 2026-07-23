@@ -52,20 +52,7 @@ public class IdempotentEventHandler {
     }
 
     private <E> void doHandle(UUID eventId, String consumerName, E event, Consumer<E> processor) {
-        if (eventId == null) {
-            log.warn("Event without eventId received for consumer={}, processing without idempotency", consumerName);
-            processor.accept(event);
-            return;
-        }
-        if (processedEventRepository.existsByEventIdAndConsumerName(eventId, consumerName)) {
-            log.info("Event {} already processed by {}, skipping", eventId, consumerName);
-            return;
-        }
+        // [control/no-defense] ⑥ processed_events dedup 제거 — 중복/역순 재배달을 매번 재처리 (⑤ 재시도 루프는 @Version 제거로 무의미).
         processor.accept(event);
-        processedEventRepository.save(ProcessedEvent.builder()
-                .eventId(eventId)
-                .consumerName(consumerName)
-                .processedAt(Instant.now())
-                .build());
     }
 }

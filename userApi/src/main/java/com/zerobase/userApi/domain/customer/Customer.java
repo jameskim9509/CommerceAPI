@@ -42,10 +42,7 @@ public class Customer extends BaseEntity{
     @Column(columnDefinition = "int default 0")
     private Integer balance;
 
-    // ADR-002 의 낙관적 락을 잔액(결제·환불 동시성)에도 적용. 재고(ProductItem.version)와 동일 패턴.
-    @Version
-    @NotAudited
-    private Long version;
+    // [control/no-defense] ⑤ 잔액 낙관적 락 제거 — @Version 삭제 (동시 결제/환불 lost update).
 
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> roles;

@@ -32,10 +32,7 @@ public class CustomerBalanceHistoryService {
                                                  .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND))
                                  ).build());
 
-         if(customerBalanceHistory.getChangeMoney() + form.getMoney() < 0)
-         {
-             throw new CustomException(ErrorCode.NOT_ENOUGH_BALANCE);
-         }
+         // [control/no-defense] ④ 잔액 부족 검증(NOT_ENOUGH_BALANCE) 제거 — 음수 잔액 허용(PaymentFailed 분기 소멸).
 
          customerBalanceHistory = CustomerBalanceHistory.builder()
                  .changeMoney(customerBalanceHistory.getChangeMoney() + form.getMoney())

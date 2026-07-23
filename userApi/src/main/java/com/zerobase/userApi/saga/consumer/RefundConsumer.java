@@ -39,16 +39,7 @@ public class RefundConsumer {
     }
 
     private void process(SagaEvents.StockReservationFailed event) {
-        ChangeBalanceDto.Input form = ChangeBalanceDto.Input.builder()
-                .from(event.getUsername())
-                .money(event.getAmountToRefund())
-                .message("주문 실패 환불 (orderId=" + event.getOrderId() + ", reason=" + event.getReason() + ")")
-                .build();
-
-        balanceService.changeBalance(event.getCustomerId(), form);
-        publisher.publish(SagaTopics.PAYMENT_REVERTED, SagaEvents.PaymentReverted.builder()
-                .eventId(UUID.randomUUID())
-                .orderId(event.getOrderId())
-                .build());
+        // [control/no-defense] ③ 재고 실패→환불 보상 제거 — 이벤트만 소비(lag 정리)하고 환불/PaymentReverted 안 함.
+        //   → 차감된 잔액 미환불(돈 보존 위반) + 해당 주문 PENDING 잔류.
     }
 }

@@ -24,9 +24,7 @@ public class ProductItem extends BaseEntity{
     private Integer price;
     private Integer count;
 
-    @Version
-    @NotAudited
-    private Long version;
+    // [control/no-defense] ② 재고 낙관적 락 제거 — @Version 삭제 (동시 차감 lost update → oversell).
 
     @ManyToOne
     @JoinColumn(name = "PRODUCT_ID")

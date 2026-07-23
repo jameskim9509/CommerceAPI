@@ -33,30 +33,8 @@ public class IdempotencyService {
     private final ObjectMapper objectMapper;
 
     public ResponseEntity<?> execute(String idempotencyKey, Supplier<ResponseEntity<?>> action) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new CustomException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
-        }
-
-        String redisKey = KEY_PREFIX + idempotencyKey;
-        boolean acquired = tryAcquire(redisKey);
-
-        if (!acquired) {
-            return resolveExisting(redisKey);
-        }
-
-        try {
-            ResponseEntity<?> response = action.get();
-            cache(redisKey, response.getStatusCode().value(), response.getBody());
-            return response;
-        } catch (CustomException e) {
-            ErrorResponseDto body = ErrorResponseDto.builder()
-                    .errorCode(e.getErrorCode())
-                    .message(e.getMessage())
-                    .build();
-            int status = e.getErrorCode().getStatus().value();
-            cache(redisKey, status, body);
-            return ResponseEntity.status(status).body(body);
-        }
+        // [control/no-defense] ① 멱등 게이트 제거 — 게이트/캐시 없이 매 요청 실행 (같은 키 재전송 → 새 주문 이중 생성).
+        return action.get();
     }
 
     private boolean tryAcquire(String redisKey) {
