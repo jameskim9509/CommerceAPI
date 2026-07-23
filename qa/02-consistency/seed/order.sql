@@ -4,7 +4,7 @@
 -- 두 종류의 SKU:
 --   1) hot SKU (한정 재고) — product/product_item id 10001, count=1000 ≪ 경합 수요(8% ≈ 8,000@10만)
 --        → ② 재고 낙관적 락 경합 / 초과판매 방어 + ③ 재고 소진→환불 을 발화.
---   2) 정상 SKU 50종 × 5아이템 (id 20001.., 재고 10,000,000 충분) — 85% 정상 + 5% broke + 2% 멱등 재전송용.
+--   2) 정상 SKU 50종 × 5아이템 (id 20001.., 재고 10,000,000 충분) — 90% 정상 + 2% 멱등 재전송용.
 --
 -- ★ 이름/설명/가격/셀러는 k6(load-test-consistency.js)가 보내는 payload 와 "정확히" 일치해야 한다.
 --   CartService.refreshCart 가 product.name/description, item.name/price 를 DB 와 비교해 다르면 메시지를 달고
@@ -14,15 +14,15 @@
 -- 자립 시드 규칙 (01-load-balancing 과 동일 원칙):
 --   - seller_id 1 = 이 시나리오 user.sql 의 seller (자립 — user.sql 을 먼저 주입).
 --   - 이 스택은 전용 DB(name: consist)라 id 범위 10001 / 20001.. 을 이 시드만 사용한다.
---   - cleanup 은 자기 행(CT-HOT% / CtNormal% / username ctrich|ctbroke)만 — 멱등 재주입 안전.
+--   - cleanup 은 자기 행(CT-HOT% / CtNormal% / username ctrich)만 — 멱등 재주입 안전.
 --   - product_item.version = 0 (V3 DEFAULT) — @Version 낙관적 락 초기값.
 -- =============================================================================
 
 USE orders;
 
 -- ---------------- cleanup (자기 행만) ----------------
-DELETE FROM order_items WHERE order_id IN (SELECT id FROM (SELECT id FROM orders WHERE username REGEXP '^(ctrich|ctbroke)[0-9]+@qa\\.test$') AS t);
-DELETE FROM orders            WHERE username REGEXP '^(ctrich|ctbroke)[0-9]+@qa\\.test$';
+DELETE FROM order_items WHERE order_id IN (SELECT id FROM (SELECT id FROM orders WHERE username REGEXP '^ctrich[0-9]+@qa\\.test$') AS t);
+DELETE FROM orders            WHERE username REGEXP '^ctrich[0-9]+@qa\\.test$';
 DELETE FROM product_item      WHERE name LIKE 'CT-HOT%' OR name LIKE 'CtNormal%';
 DELETE FROM product           WHERE name LIKE 'CT-HOT%' OR name LIKE 'CtNormal%';
 

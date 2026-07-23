@@ -2,7 +2,7 @@
 # =============================================================================
 # ADR-008 §검증 — 교차 DB 3대 불변식 / 9개 체크 (정착 후 최종 DB 상태로 판정)
 #
-# 런 스코프는 시드 명명 규칙: orders.username LIKE 'ctrich%'|'ctbroke%', customer.email 동일.
+# 런 스코프는 시드 명명 규칙: orders.username LIKE 'ctrich%', customer.email 동일.
 # ① 멱등성 위반은 SQL 에 안 잡히므로 k6 summary 의 duplicate_order_responses 를 함께 집계(ADR-008 §측정).
 #
 # 출력: 9개 체크 PASS/FAIL + 위반 행/단위 총수 N(집계 KPI) + 돈 보존 누수(원). results/<RUN_LABEL>-verify.txt.
@@ -24,9 +24,8 @@ mkdir -p "$RESULTS_DIR"
 HOT_ID=10001
 HOT_INIT=1000
 RICH_BAL=10000000
-BROKE_BAL=500
-SCOPE_O="username LIKE 'ctrich%' OR username LIKE 'ctbroke%'"
-SCOPE_U="email LIKE 'ctrich%' OR email LIKE 'ctbroke%'"
+SCOPE_O="username LIKE 'ctrich%'"
+SCOPE_U="email LIKE 'ctrich%'"
 
 q_order() { docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot -N -B orders -e "$1" 2>/dev/null | tr -d '[:space:]'; }
 q_user()  { docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot -N -B user   -e "$1" 2>/dev/null | tr -d '[:space:]'; }
@@ -57,8 +56,7 @@ v3c=$(n "$(q_user  "SELECT COUNT(*) FROM outbox_events WHERE sent_at IS NULL;")"
 v3e=$(n "$(q_user  "SELECT COUNT(*) FROM customer WHERE balance < 0 AND ($SCOPE_U);")")
 
 rich_cnt=$(n "$(q_user "SELECT COUNT(*) FROM customer WHERE email LIKE 'ctrich%';")")
-broke_cnt=$(n "$(q_user "SELECT COUNT(*) FROM customer WHERE email LIKE 'ctbroke%';")")
-bal_init=$(( rich_cnt * RICH_BAL + broke_cnt * BROKE_BAL ))
+bal_init=$(( rich_cnt * RICH_BAL ))
 bal_now=$(n "$(q_user "SELECT COALESCE(SUM(balance),0) FROM customer WHERE ($SCOPE_U);")")
 confirmed_total=$(n "$(q_order "SELECT COALESCE(SUM(total_price),0) FROM orders WHERE status='CONFIRMED' AND ($SCOPE_O);")")
 money_leak=$(( (bal_init - bal_now) - confirmed_total ))    # 0 = 돈 보존
@@ -78,7 +76,7 @@ pf() { [ "$1" -eq 0 ] && echo PASS || echo "FAIL($1)"; }
 REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
 {
     echo "===== ADR-008 정합성 검증 ($RUN_LABEL) ====="
-    echo "scope: ctrich/ctbroke | rich=$rich_cnt broke=$broke_cnt | hot id=$HOT_ID init=$HOT_INIT now=$hot_now version=$hot_version"
+    echo "scope: ctrich | rich=$rich_cnt | hot id=$HOT_ID init=$HOT_INIT now=$hot_now version=$hot_version"
     echo "status 분포: $status_dist"
     echo ""
     echo "① 멱등성 위반 (duplicate_order_responses)      : $([ "$v1" = "n/a" ] && echo 'n/a (k6 summary 없음)' || pf "$v1")"
@@ -100,7 +98,7 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
         echo "판정: PASS ✓ (이 arm·이 카오스 스케줄에서 잔여 0)"
     else
         echo "판정: 잔여 있음 — N=$N, money_leak=${money_leak}원"
-        echo "  (treatment 에서 잔여 r>0 은 6개 방어 대상이 아닌 주변 장애 T1–T4 때문. control 은 desired 위반까지 더해 N≫r.)"
+        echo "  (treatment 에서 잔여 r>0 은 5개 방어 대상이 아닌 주변 장애 T1–T4 때문. control 은 desired 위반까지 더해 N≫r.)"
     fi
 } | tee "$REPORT"
 

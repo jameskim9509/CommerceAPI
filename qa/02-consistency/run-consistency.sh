@@ -12,7 +12,7 @@
 # 동작: down -v → up(orderapi ×N, --no-build) → ready 대기 → 시드(자립: user.sql→order.sql)
 #       → k6(부하) + chaos(bounded T1–T4) 동시 → k6 종료 → 정착(quiescence) → verify(교차 DB 9체크) → down -v
 #
-# 환경변수: ORDER_TARGET(100000) ARRIVAL_RATE(200) N_ORDERAPI(4) CHAOS(on|off) RICH_POOL(300) BROKE_POOL(60)
+# 환경변수: ORDER_TARGET(100000) ARRIVAL_RATE(200) N_ORDERAPI(4) CHAOS(on|off) RICH_POOL(300)
 #           READY_WAIT(60) CHAOS_GRACE(60) KEEP(0: 종료 후 down -v)
 # =============================================================================
 set -uo pipefail
@@ -26,12 +26,11 @@ ARRIVAL_RATE="${ARRIVAL_RATE:-200}"
 N_ORDERAPI="${N_ORDERAPI:-4}"
 CHAOS="${CHAOS:-on}"
 RICH_POOL="${RICH_POOL:-300}"
-BROKE_POOL="${BROKE_POOL:-60}"
 READY_WAIT="${READY_WAIT:-60}"
 KEEP="${KEEP:-0}"
 
 COMPOSE_ARGS="-f docker-compose.qa.yml"
-export COMPOSE_ARGS ORDER_TARGET ARRIVAL_RATE RICH_POOL BROKE_POOL
+export COMPOSE_ARGS ORDER_TARGET ARRIVAL_RATE RICH_POOL
 export RUN_LABEL="$LABEL"
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
@@ -49,7 +48,7 @@ docker compose $COMPOSE_ARGS up -d --no-build --scale orderapi="$N_ORDERAPI" \
 echo "[$LABEL] ready 대기 ${READY_WAIT}s (JVM 부팅 + Eureka 등록 + Gateway registry fetch) ..."
 sleep "$READY_WAIT"
 
-# 2) 시드: 자립 시나리오 (seller1 + ctrich/ctbroke + hot/normal SKU)
+# 2) 시드: 자립 시나리오 (seller1 + ctrich + hot/normal SKU)
 echo "[$LABEL] 시드 (자립: user.sql → order.sql) ..."
 docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot user   < ./seed/user.sql
 docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot orders < ./seed/order.sql
@@ -58,7 +57,7 @@ docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot orders < ./
 echo "[$LABEL] k6 부하 시작 (백그라운드) ..."
 ( RUN_LABEL="$LABEL" docker compose $COMPOSE_ARGS run --rm --no-deps \
     -e RUN_LABEL="$LABEL" -e ORDER_TARGET="$ORDER_TARGET" -e ARRIVAL_RATE="$ARRIVAL_RATE" \
-    -e RICH_POOL="$RICH_POOL" -e BROKE_POOL="$BROKE_POOL" \
+    -e RICH_POOL="$RICH_POOL" \
     k6 run /scripts/load-test-consistency.js ) &
 K6_PID=$!
 
