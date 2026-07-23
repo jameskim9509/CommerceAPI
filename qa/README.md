@@ -5,7 +5,7 @@
 
 | 시나리오 | 목적 | 진입점 | 결과 |
 |---|---|---|---|
-| [**01-load-balancing/**](01-load-balancing/) | orderApi 1→2→4 스케일 시 **LoadBalancer 효과** 정량화 (ADR-005 시나리오 3) | `run-experiments.sh` / `run-experiments-order-only.sh` | `E1/E2/E3`, `E1o/E2o/E3o` |
+| [**01-load-balancing/**](01-load-balancing/) | orderApi 1→2→4 스케일 시 **LoadBalancer 효과** 정량화 (ADR-005 시나리오 3) | 수동 측정 절차 ([README](01-load-balancing/README.md)) | `E1/E2/E3`, `E1o/E2o/E3o` |
 | **02-consistency/** _(예정)_ | 멱등성·낙관적락(초과판매)·SAGA보상 통합 정합성 검증 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | ADR-008 명세대로 **신규 작성 예정** | — |
 
 > **02-consistency 는 아직 없다.** [ADR-008](../ADR/008-order-consistency-integration-scenario.md) 명세(주문 10만 건 통합 부하 + 주변 장애 T1~T6)에 맞춰 새로 작성한다.
@@ -13,12 +13,9 @@
 
 ## 빠른 시작
 
-```bash
-# 시나리오 ① 부하 분산 (E1 → E2 → E3)
-./qa/01-load-balancing/run-experiments.sh
-```
+측정은 **인스턴스를 직접 늘려가며 수동으로** 수행한다. 시나리오 폴더 README 의
+"실행 — 수동 측정" 절차(스택 기동 → 시드 → 모니터 → k6 → 수집 → 분석)를 따른다:
 
-각 시나리오의 상세(측정 모델·합격 기준·구조)는 폴더 안 README 참조:
 [01-load-balancing/README.md](01-load-balancing/README.md)
 
 ## 공통 규칙
@@ -34,6 +31,6 @@
 ## 공통 주의사항
 
 - Docker daemon + 약 8GB 메모리 / 8CPU 필요 (4 인스턴스 + MySQL×2 + Kafka 동시 기동).
-- Windows 는 Git Bash / WSL2 에서 실행 (스크립트가 `MSYS_NO_PATHCONV=1` 로 경로 변환 회피).
+- Windows 는 Git Bash / WSL2. Git Bash 는 k6 컨테이너 경로(`/scripts`, `/results`) 보호를 위해 `export MSYS_NO_PATHCONV=1` 를 먼저 실행 (WSL2 는 불필요).
 - k6 를 `docker compose run` 으로 부를 때 **`--no-deps` 필수** — 없으면 의존성 트리가 다시 뜨며
   `--scale orderapi=N` 이 기본값 1 로 리셋된다 (초기 측정을 통째로 무효화했던 인프라 버그).

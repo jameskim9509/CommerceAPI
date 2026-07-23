@@ -11,9 +11,7 @@ orderApi 인스턴스를 1 / 2 / 4 로 늘리면서 Gateway + Eureka LoadBalance
 ```
 qa/01-load-balancing/
 ├── docker-compose.qa.yml           측정 전용 compose (작은 자원 한도 + k6 runner + db-seed). name: qa-load-balancing 고정
-├── run-experiments.sh              E1 / E2 / E3 자동 실행 (cart→order 워크로드)
-├── run-experiments-order-only.sh   E1o / E2o / E3o (order-only 워크로드 — cart_add throttle 제거)
-├── monitor-stats.sh                부하 중 docker stats + MySQL + Eureka 를 5초 간격 캡쳐
+├── monitor-stats.sh                부하 중 docker stats + MySQL + Eureka 를 5초 간격 캡쳐 (측정 중 백그라운드로 직접 실행)
 ├── parse_results.py                k6 summary → 핵심 지표 표
 ├── analyze_bottleneck.py           엔드포인트별 latency 분해 (병목 식별)
 ├── analyze_monitoring.py           CPU/MySQL 모니터링 CSV → avg/p95/max
@@ -43,49 +41,62 @@ qa/01-load-balancing/
 | 실험 | E1 (1 인스턴스) / E2 (2) / E3 (4) |
 | 인스턴스당 자원 | 2 CPU / 1 GB (관측 가능한 차이를 만들기 위해 의도적으로 작게) |
 
-## 실행
+## 실행 — 수동 측정
 
-```bash
-# 1. Docker daemon 확인
-docker info
-
-# 2. 자동 실행 (E1 → E2 → E3 순차)
-./qa/01-load-balancing/run-experiments.sh
-
-# 2b. order-only 변형 (E1o → E2o → E3o)
-./qa/01-load-balancing/run-experiments-order-only.sh
-
-# 3. 결과
-ls qa/01-load-balancing/results/
-# - E1-summary.json, E1-k6-summary.json, E1-server-side.md, E1-docker-stats.txt
-# - E2-..., E3-...
-
-# 4. 분석
-python qa/01-load-balancing/parse_results.py
-python qa/01-load-balancing/analyze_monitoring.py
-```
-
-## 수동 단일 실험 (디버깅용)
+인스턴스를 **1 → 2 → 4 로 직접 늘려가며** 각각 측정한다. 각 N 마다 아래 절차를 반복한다.
+(Windows Git Bash 는 컨테이너 경로 보호를 위해 `export MSYS_NO_PATHCONV=1` 를 먼저; WSL2 는 불필요.)
 
 ```bash
 cd qa/01-load-balancing
+N=2                # 이번 실험 인스턴스 수 (1 → 2 → 4)
+LABEL=E2           # 결과 접두사 (E1/E2/E3; order-only 는 E1o/E2o/E3o)
 
-# 1) 스택 기동 (예: 2 인스턴스)
-docker compose -f docker-compose.qa.yml up -d --scale orderapi=2
+# 1) 이전 잔재 정리
+docker compose -f docker-compose.qa.yml down -v --remove-orphans
 
-# 2) 시드 (스택 ready 후) — user.sql(seller+customer) → order.sql(상품) 순서
-docker compose -f docker-compose.qa.yml exec -T mysql-user \
-    mysql -uroot -proot user < seed/user.sql
-docker compose -f docker-compose.qa.yml exec -T mysql-order \
-    mysql -uroot -proot orders < seed/order.sql
+# 2) 스택 기동 (db-seed 제외 — 시드는 4)에서 직접 주입)
+docker compose -f docker-compose.qa.yml up -d --scale orderapi=$N \
+    mysql-user mysql-order redis kafka eureka userapi orderapi gateway
 
-# 3) k6 부하 테스트 (★ --no-deps 필수: 없으면 --scale 이 1 로 리셋됨)
-EXPERIMENT_LABEL=E2 docker compose -f docker-compose.qa.yml run --rm --no-deps k6 \
-    run /scripts/load-test.js
+# 3) ready 대기 (JVM 부팅 + Eureka 등록 + Gateway registry fetch)
+sleep 60
 
-# 4) 정리
+# 4) 자립 시드 주입 (user.sql → order.sql 순서: order 의 seller_id=1 이 user 의 seller 참조)
+docker compose -f docker-compose.qa.yml exec -T mysql-user  mysql -uroot -proot user   < seed/user.sql
+docker compose -f docker-compose.qa.yml exec -T mysql-order mysql -uroot -proot orders < seed/order.sql
+
+# 5) (선택) 모니터링 백그라운드 — docker stats + MySQL + Eureka 5초 간격 → results/$LABEL-*.csv
+bash monitor-stats.sh $LABEL &
+
+# 6) k6 부하 (★ --no-deps 필수: 없으면 --scale 이 1 로 리셋)
+#    전체 흐름 = /scripts/load-test.js   ·   order-only = /scripts/load-test-order-only.js (LABEL 도 E2o 로)
+EXPERIMENT_LABEL=$LABEL docker compose -f docker-compose.qa.yml run --rm --no-deps k6 \
+    run --summary-export /results/$LABEL-k6-summary.json /scripts/load-test.js
+
+# 7) 모니터 종료 (lock 파일 제거)
+rm -f /tmp/qa-monitor.lock
+
+# 8) (선택) 안정화 대기 후 서버측 지표 (Outbox 처리 + SAGA 완결)
+sleep 60
+docker compose -f docker-compose.qa.yml exec -T mysql-order mysql -uroot -proot -e "
+    SELECT status, COUNT(*) AS cnt FROM orders.orders GROUP BY status;          -- 주문 상태 분포 (PENDING=0 확인)
+    SELECT COUNT(*) AS unsent FROM orders.outbox_events WHERE sent_at IS NULL;  -- Outbox 미발행 잔여
+"
+
+# 9) 정리 후 다음 N 으로
 docker compose -f docker-compose.qa.yml down -v
 ```
+
+**N = 1, 2, 4 로 세 번 반복**한 뒤 결과를 분석한다:
+
+```bash
+python parse_results.py        # k6 summary → p50/p95/p99·throughput·에러율·분배 표
+python analyze_monitoring.py   # CPU/MySQL 모니터링 CSV → avg/p95/max
+python analyze_bottleneck.py   # 엔드포인트별 latency 분해 (병목 식별)
+```
+
+> **`--no-deps` 를 빼면** k6 의 `depends_on: gateway` 가 의존성 트리를 다시 띄우며 `--scale orderapi=$N` 을
+> 기본값 1 로 되돌린다 — 측정을 통째로 무효화하는 함정이니 반드시 유지.
 
 ## 시드 구성 (자립)
 
@@ -99,7 +110,7 @@ docker compose -f docker-compose.qa.yml down -v
 | cleanup | 자기 행만 (`seller id=1`, `customer<digits>`) | 자기 행만 (`QaProduct%`) |
 
 - 주입 순서: **user.sql → order.sql** (order 의 `seller_id=1` 이 user.sql 의 seller 를 참조).
-- qa 스택은 `name: qa` 로 별도 DB 라, 자기 seller(id=1)를 만들어도 상시환경과 같은 DB 에 공존하지 않아 충돌이 없다.
+- qa 스택은 `name: qa-load-balancing` 으로 별도 DB 라, 자기 seller(id=1)를 만들어도 상시환경과 같은 DB 에 공존하지 않아 충돌이 없다.
 - 이메일 검증 단계 우회: SQL 로 `verify=true` 직접 INSERT.
 
 > 상시 테스트 환경(compose/k8s)의 공통 베이스 픽스처(seller 1·2, 엣지케이스 상품·고객)는
@@ -109,8 +120,8 @@ docker compose -f docker-compose.qa.yml down -v
 
 스키마는 Flyway(앱 부팅 시 생성)라 MySQL `/docker-entrypoint-initdb.d/` 로는 못 넣는다(테이블 생성 전 실행). 그래서 **마이그레이션 후 테이블을 폴링하다 주입하는 1회용 러너**를 둔다:
 
-- 이 시나리오의 `docker-compose.qa.yml` `db-seed` 서비스: 평범한 `up` 시 **시나리오 자립 시드**(`./seed`)를 자동 주입.
-  - `run-experiments*.sh` 는 `up` 의 서비스 목록에서 db-seed 를 제외하고 user → order 를 명시적으로 주입한다 (중복 방지).
+- 이 시나리오의 `docker-compose.qa.yml` `db-seed` 서비스: 서비스 목록 없이 평범한 `up` 시 **시나리오 자립 시드**(`./seed`)를 자동 주입.
+  - 위 수동 측정 절차는 `up` 에 서비스를 명시해 db-seed 를 제외하고 user → order 를 직접 주입한다 (주입 시점 제어).
 
 > 상시환경(`docker-compose.test.yml`, `k8s/overlays/test`)의 db-seed 는 이 시나리오가 아니라
 > **루트 [seed/](../../seed/)** 공통 베이스를 주입한다. k8s 는 트리 밖(`../../../seed/`) 참조라 적용 시:
