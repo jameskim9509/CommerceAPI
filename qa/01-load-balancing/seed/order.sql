@@ -1,13 +1,13 @@
 -- =============================================================================
 -- ADR-005 시나리오 3 부하(k6) 시드 - orderApi DB (orders)
+-- 이 시나리오의 "자립 시드" (user.sql 이 만든 seller 위에 상품/재고를 얹는다).
 -- 100 개 product, 각각 ProductItem 5 개 (총 500 product_items)
 -- 재고는 1_000_000 (재고 부족이 부하 시그널을 오염시키지 않도록)
 --
 -- 가격: 1000 ~ 5000 원 (5 단계)
--- seller_id: functional/user.sql 이 만든 seller1 의 PK(=1). functional 이 먼저 주입된다.
+-- seller_id: 같은 시나리오 user.sql 이 만든 seller1 의 PK(=1). 주입 순서 user.sql → order.sql.
 -- product / product_item id = 1..100 / 1..500 강제 INSERT (load-test.js 의 산술 매핑과 일치).
---   functional/order.sql 은 9001+ 를 쓰므로 이 범위와 겹치지 않는다.
--- cleanup 은 'QaProduct%' (자기 행)만 — functional 의 'QA-%' 는 건드리지 않는다.
+-- cleanup 은 'QaProduct%' (자기 행)만 — 멱등(DELETE+INSERT) 재주입 안전.
 -- =============================================================================
 
 USE orders;
@@ -20,7 +20,7 @@ DELETE FROM product WHERE name LIKE 'QaProduct%';
 DELETE FROM outbox_events WHERE topic LIKE 'qa-%' OR created_at < NOW() - INTERVAL 30 DAY;
 DELETE FROM processed_events WHERE consumer_name LIKE 'qa-%';
 
--- seller_id 는 functional 이 만든 seller1 (id=1) 을 재사용.
+-- seller_id 는 같은 시나리오 user.sql 이 만든 seller1 (id=1).
 SET @seller_id = 1;
 
 -- 100 products. 명시적 ID 사용으로 product.id = n 보장.

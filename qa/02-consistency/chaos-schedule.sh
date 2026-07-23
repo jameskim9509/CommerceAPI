@@ -29,7 +29,7 @@ T2_DOWN_S="${T2_DOWN_S:-25}"
 # 독립 실행 시엔 (1) 진행도 정체 감지(STALL_LIMIT) (2) 부하추정+정착 HARD_TIMEOUT 이 이중으로 종료를 보장.
 HARD_TIMEOUT="${HARD_TIMEOUT:-$(( ORDER_TARGET / ARRIVAL_RATE + 300 ))}"
 STALL_LIMIT="${STALL_LIMIT:-40}"     # 진행도 무변화 40*POLL(≈120s) → 남은 앵커 생략하고 종료
-SCOPE="username LIKE 'ctrich%' OR username LIKE 'ctbroke%'"
+SCOPE="username LIKE 'ctrich%'"
 
 progress() {
     docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot -N -B orders \

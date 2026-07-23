@@ -18,7 +18,7 @@ public class IdempotentEventHandler {
 
     @Transactional
     public <E> void handle(UUID eventId, String consumerName, E event, Consumer<E> processor) {
-        // [control/no-defense] ⑥ processed_events dedup 제거 — 중복/역순 재배달을 매번 재처리.
+        // [control/no-defense] ⑤ processed_events dedup 제거 — 중복/역순 재배달을 매번 재처리.
         processor.accept(event);
     }
 }

@@ -42,7 +42,7 @@ public class Customer extends BaseEntity{
     @Column(columnDefinition = "int default 0")
     private Integer balance;
 
-    // [control/no-defense] ⑤ 잔액 낙관적 락 제거 — @Version 삭제 (동시 결제/환불 lost update).
+    // [control/no-defense] ④ 잔액 낙관적 락 제거 — @Version 삭제 (동시 결제/환불 lost update).
 
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> roles;

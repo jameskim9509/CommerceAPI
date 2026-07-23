@@ -52,7 +52,7 @@ public class IdempotentEventHandler {
     }
 
     private <E> void doHandle(UUID eventId, String consumerName, E event, Consumer<E> processor) {
-        // [control/no-defense] ⑥ processed_events dedup 제거 — 중복/역순 재배달을 매번 재처리 (⑤ 재시도 루프는 @Version 제거로 무의미).
+        // [control/no-defense] ⑤ processed_events dedup 제거 — 중복/역순 재배달을 매번 재처리 (④ 재시도 루프는 @Version 제거로 무의미).
         processor.accept(event);
     }
 }

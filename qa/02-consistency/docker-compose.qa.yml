@@ -3,10 +3,10 @@
 #
 # 01-load-balancing/docker-compose.qa.yml 와 같은 자립형 패턴이되 정합성 시나리오에 맞춤:
 #   - name: consist   → 컨테이너 consist-*  (01-load-balancing 의 qa-* 와 네임스페이스 분리; 한 번에 하나만 기동)
-#   - kafka KAFKA_CFG_NUM_PARTITIONS: 4 → orderApi 4인스턴스 × 4파티션 병렬 소비로 ② 재고·⑤ 잔액 @Version 경합 발화
+#   - kafka KAFKA_CFG_NUM_PARTITIONS: 4 → orderApi 4인스턴스 × 4파티션 병렬 소비로 ② 재고·④ 잔액 @Version 경합 발화
 #   - redis / kafka 볼륨 없음(ephemeral) → 주변 장애 T3(멱등키 유실)·T4(kafka 로그 전소) 카오스 주입 대상
 #
-# control(무방어) 실행은 -f docker-compose.qa.yml -f docker-compose.control.yml 로 오버레이(방어 6종 OFF).
+# control(무방어) 실행은 무방어 브랜치(control/no-defense, tag v1) 체크아웃 + build-images.sh 로 한다 (방어 5종 OFF; 오버레이 없음).
 #
 # 사용:
 #   docker compose -f docker-compose.qa.yml up -d --scale orderapi=4
@@ -185,9 +185,9 @@ services:
           memory: 768M
     networks: [commerce-consist]
 
-  # 베이스(functional: seller1) → 시나리오(ctrich/ctbroke + hot/normal SKU) 자동 주입 (1회용).
+  # 시나리오 자립 시드(seller1 + ctrich + hot/normal SKU) 자동 주입 (1회용).
   #   run-consistency.sh 는 up 서비스 목록에서 db-seed 를 제외하고 명시적으로 주입하므로 부하엔 영향 없음.
-  #   플레인 `up` 시엔 이 서비스가 functional → scenario 순으로 주입한다.
+  #   플레인 `up` 시엔 이 서비스가 user.sql → order.sql 순으로 주입한다 (product 가 seller 를 참조).
   db-seed:
     image: mysql:8.0
     restart: "no"
@@ -197,8 +197,7 @@ services:
       userapi: { condition: service_started }
       orderapi: { condition: service_started }
     volumes:
-      - ../01-load-balancing/seed/functional:/seed/functional:ro
-      - ./seed/scenario:/seed/scenario:ro
+      - ./seed:/seed:ro
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -206,12 +205,9 @@ services:
         echo "[db-seed] waiting for Flyway-created tables ..."
         until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
         until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
-        echo "[db-seed] functional base (seller1) ..."
-        mysql -h mysql-user  -uroot -proot user   < /seed/functional/user.sql
-        mysql -h mysql-order -uroot -proot orders < /seed/functional/order.sql
-        echo "[db-seed] consistency scenario (ctrich/ctbroke + hot/normal SKU) ..."
-        mysql -h mysql-user  -uroot -proot user   < /seed/scenario/user.sql
-        mysql -h mysql-order -uroot -proot orders < /seed/scenario/order.sql
+        echo "[db-seed] consistency scenario (seller1 + ctrich + hot/normal SKU) ..."
+        mysql -h mysql-user  -uroot -proot user   < /seed/user.sql
+        mysql -h mysql-order -uroot -proot orders < /seed/order.sql
         echo "[db-seed] done."
     networks: [commerce-consist]
 
@@ -226,7 +222,6 @@ services:
       ORDER_TARGET: ${ORDER_TARGET:-100000}
       ARRIVAL_RATE: ${ARRIVAL_RATE:-200}
       RICH_POOL: ${RICH_POOL:-300}
-      BROKE_POOL: ${BROKE_POOL:-60}
       RUN_LABEL: ${RUN_LABEL:-unknown}
     depends_on:
       gateway: { condition: service_started }

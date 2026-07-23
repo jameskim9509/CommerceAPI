@@ -20,7 +20,7 @@ COMPOSE_ARGS="${COMPOSE_ARGS:--f docker-compose.qa.yml}"
 STABLE_ROUNDS="${STABLE_ROUNDS:-3}"
 INTERVAL="${INTERVAL:-5}"
 TIMEOUT="${TIMEOUT:-600}"
-SCOPE="username LIKE 'ctrich%' OR username LIKE 'ctbroke%'"
+SCOPE="username LIKE 'ctrich%'"
 
 q_order() { docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot -N -B orders -e "$1" 2>/dev/null | tr -d '[:space:]'; }
 q_user()  { docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot -N -B user   -e "$1" 2>/dev/null | tr -d '[:space:]'; }

@@ -11,7 +11,7 @@
 | ORDER_TARGET | `⟨측정전⟩` (명세 100,000) |
 | ARRIVAL_RATE | `⟨측정전⟩` (기본 200/s, constant-arrival-rate) |
 | orderApi 인스턴스 × Kafka 파티션 | `⟨측정전⟩` (명세 4 × 4) |
-| 고객 풀 | ctrich 300 + ctbroke 60 |
+| 고객 풀 | ctrich 300 |
 | hot SKU 초기재고 | 1,000 |
 | 카오스 스케줄 | T2@20% · T3@40% · T1@60% · T4@80% (bounded, 양 arm 동일) |
 | 반복 N | `⟨측정전⟩` (명세 ≥10 interleaved) |
@@ -42,7 +42,7 @@
 | ③ 돈 보존 누수(원) | `⟨측정전⟩` |
 | ③ 음수 잔액 | `⟨측정전⟩` |
 
-## 보조: ⑤ 잔액 락 git-native clean delta (선택)
+## 보조: ④ 잔액 락 git-native clean delta (선택)
 
 `f0a48d5~1`(무 @Version) vs `f0a48d5`(@Version) 단일변수 pre/post. 헤드라인 아님, 집계 옆 보조 증거.
 
