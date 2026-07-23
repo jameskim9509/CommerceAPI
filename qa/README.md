@@ -6,10 +6,10 @@
 | 시나리오 | 목적 | 진입점 | 결과 |
 |---|---|---|---|
 | [**01-load-balancing/**](01-load-balancing/) | orderApi 1→2→4 스케일 시 **LoadBalancer 효과** 정량화 (ADR-005 시나리오 3) | `run-experiments.sh` / `run-experiments-order-only.sh` | `E1/E2/E3`, `E1o/E2o/E3o` |
-| **02-consistency/** _(예정)_ | 멱등성·낙관적락(초과판매)·SAGA보상 통합 정합성 검증 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | ADR-008 명세대로 **신규 작성 예정** | — |
+| [**02-consistency/**](02-consistency/) | 6종 방어(멱등·재고락·SAGA보상·아웃박스·잔액락·dedup)의 통합 정합성 — 무방어(N) vs 방어(r) 집계 KPI + 교차 DB 불변식 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | `run-kpi-matrix.sh` / `run-consistency.sh` | `KPI-MATRIX.md`, `*-verify.txt` (전부 `⟨측정전⟩`) |
 
-> **02-consistency 는 아직 없다.** [ADR-008](../ADR/008-order-consistency-integration-scenario.md) 명세(주문 10만 건 통합 부하 + 주변 장애 T1~T6)에 맞춰 새로 작성한다.
-> 그 전까지 각 정합성 메커니즘의 개별 검증은 부하가 아니라 각 모듈 `src/test` 의 단위·통합 테스트가 담당한다.
+> **02-consistency 는 실행 가능한 하네스로 구현됐다** (ADR-008 명세: 주문 10만 건 통합 부하 + 원하는 장애 6종 + 주변 장애 T1~T4).
+> 단, 측정치는 전부 `⟨측정전⟩` — `run-kpi-matrix.sh` 를 실제로 돌린 뒤 채운다. 상세는 [02-consistency/README.md](02-consistency/README.md).
 
 ## 빠른 시작
 

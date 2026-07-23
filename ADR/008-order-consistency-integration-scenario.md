@@ -166,7 +166,7 @@ SELECT COUNT(*) FROM customer WHERE balance < 0 AND <scope>;                  --
 
 #### control(무방어) 빌드
 
-git 체크아웃이 아니다 — 초기 커밋엔 SAGA·아웃박스·주문 흐름 자체가 없어 "6개 방어만 없고 나머진 그대로"인 clean 지점이 없다. → **현재 코드에서 6개 방어를 떼낸 무방어 빌드**를 만든다: ① 멱등 게이트 off · ②/⑤ `@Version` 제거 · ⑥ `processed_events` dedup 제거 · ③④ 보상 게이트 off. 변형 버그가 위반으로 오계수되지 않게, **무카오스·무트리거 clean 부하로 pre-flight 스모크** 후 사용.
+**과거 커밋 체크아웃이 아니다** — 초기 커밋엔 SAGA·아웃박스·주문 흐름 자체가 없어 "6개 방어만 없고 나머진 그대로"인 clean 지점이 없다. 대신 **현재 코드(treatment)에서 6개 방어만 떼낸 전용 브랜치 `control/no-defense`(tag `v1`)** 를 만든다: ① 멱등 게이트 off · ②/⑤ `@Version` 제거 · ⑥ `processed_events` dedup 제거 · ③④ 보상 게이트 off. 운영 코드(treatment)엔 방어-off 스위치를 두지 않아(footgun 방지) 무방어 소스는 이 브랜치에만 존재한다. **측정은 브랜치=arm** — `v1` 을 체크아웃해 같은 QA 하네스를 돌리면 control(무방어), 방어 브랜치(feature/main)에서 돌리면 treatment 다(별도 control 이미지·오버레이·토글 없음; 상세 [qa/02-consistency/README.md](../qa/02-consistency/README.md)). 변형 버그가 위반으로 오계수되지 않게, **무카오스·무트리거 clean 부하로 pre-flight 스모크** 후 사용.
 
 #### 재현 하네스 요구사항
 
