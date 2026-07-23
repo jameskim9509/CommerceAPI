@@ -61,22 +61,24 @@ qa/02-consistency/
 
 ```bash
 # ── control(무방어) 측정 ──
-git checkout v1                    
-./build-images.sh                 
-ORDER_TARGET=100000 ./run-consistency.sh C-run1  
+git checkout v1  
+cd qa/02-consistency
+./build-images.sh
+CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh C-smoke # 스모크 테스트
+ORDER_TARGET=100000 ./run-consistency.sh C-run1 # 실 테스트
 
 # ── treatment(방어) 측정 ──
 git checkout feature/66-consistency-integration-scenario
 cd qa/02-consistency
-./build-images.sh                  
-ORDER_TARGET=100000 ./run-consistency.sh T-run1  
+./build-images.sh
+CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh C-smoke # 스모크 테스트
+ORDER_TARGET=100000 ./run-consistency.sh T-run1 # 실 테스트
 
 # ── 비교 (KPI: N → r) ──
 diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p' results/T-run1-verify.txt)
 ```
 
-- **스모크 테스트**: `CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh smoke`
-- **N회 반복 테스트**: 각 브랜치에서 `./run-repeat.sh 10 C`(무방어) / `./run-repeat.sh 10 T`(방어) → `results/{C,T}-AGGREGATE.md` 중앙값 비교
+- **N회 반복 테스트**: `./run-repeat.sh N ~`
 
 > ⚠ **무방어 브랜치를 main에 merge 하지 말 것**.
 
