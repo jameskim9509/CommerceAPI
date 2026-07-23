@@ -1,0 +1,241 @@
+# =============================================================================
+# ADR-008 주문 정합성 통합 시나리오 — treatment(현재/방어 ON) 측정 스택
+#
+# 01-load-balancing/docker-compose.qa.yml 와 같은 자립형 패턴이되 정합성 시나리오에 맞춤:
+#   - name: consist   → 컨테이너 consist-*  (01-load-balancing 의 qa-* 와 네임스페이스 분리; 한 번에 하나만 기동)
+#   - kafka KAFKA_CFG_NUM_PARTITIONS: 4 → orderApi 4인스턴스 × 4파티션 병렬 소비로 ② 재고·⑤ 잔액 @Version 경합 발화
+#   - redis / kafka 볼륨 없음(ephemeral) → 주변 장애 T3(멱등키 유실)·T4(kafka 로그 전소) 카오스 주입 대상
+#
+# control(무방어) 실행은 -f docker-compose.qa.yml -f docker-compose.control.yml 로 오버레이(방어 6종 OFF).
+#
+# 사용:
+#   docker compose -f docker-compose.qa.yml up -d --scale orderapi=4
+#   docker compose -f docker-compose.qa.yml down -v
+# =============================================================================
+
+name: consist
+
+services:
+  mysql-user:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: user
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-user-consist-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [commerce-consist]
+
+  mysql-order:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: orders
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-order-consist-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [commerce-consist]
+
+  # ★ 볼륨 없음(ephemeral) — T3(멱등키 유실) 카오스 대상: FLUSHALL/restart 로 idem:order:* 소실.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [commerce-consist]
+
+  # ★ 볼륨 없음(ephemeral) + 단일 브로커 RF1 — T4(로그 전소) 카오스 대상.
+  #   KAFKA_CFG_NUM_PARTITIONS: 4 → 자동 생성 토픽이 4파티션 (기본 1 → ADR-008 ≥4 요구 충족).
+  kafka:
+    image: bitnamilegacy/kafka:3.7
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_NUM_PARTITIONS: "4"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [commerce-consist]
+
+  eureka:
+    build:
+      context: ../../eurekaServer
+      dockerfile: Dockerfile
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8761/ > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks: [commerce-consist]
+
+  userapi:
+    build:
+      context: ../../userApi
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      MYSQL_HOST: mysql-user
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: user
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+      MAIL_USERNAME: dummy@example.com
+      MAIL_PASSWORD: dummy-password
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
+    ports:
+      - "8081:8080"
+    depends_on:
+      mysql-user: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      eureka: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+    networks: [commerce-consist]
+
+  # 정합성 경합의 주 무대. --scale orderapi=4 로 4인스턴스 기동 (× 4파티션).
+  orderapi:
+    build:
+      context: ../../orderApi
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      MYSQL_HOST: mysql-order
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: orders
+      MYSQL_USER: commerce
+      MYSQL_PASSWORD: commerce
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      USER_API_URL: http://gateway/user/customer
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
+    depends_on:
+      mysql-order: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      eureka: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+    networks: [commerce-consist]
+
+  gateway:
+    build:
+      context: ../../gateway
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      EUREKA_SERVER_URL: http://eureka:8761/eureka/
+    ports:
+      - "8080:80"
+    depends_on:
+      eureka: { condition: service_healthy }
+      userapi: { condition: service_started }
+      orderapi: { condition: service_started }
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 768M
+    networks: [commerce-consist]
+
+  # 베이스(functional: seller1) → 시나리오(ctrich/ctbroke + hot/normal SKU) 자동 주입 (1회용).
+  #   run-consistency.sh 는 up 서비스 목록에서 db-seed 를 제외하고 명시적으로 주입하므로 부하엔 영향 없음.
+  #   플레인 `up` 시엔 이 서비스가 functional → scenario 순으로 주입한다.
+  db-seed:
+    image: mysql:8.0
+    restart: "no"
+    depends_on:
+      mysql-user: { condition: service_healthy }
+      mysql-order: { condition: service_healthy }
+      userapi: { condition: service_started }
+      orderapi: { condition: service_started }
+    volumes:
+      - ../01-load-balancing/seed/functional:/seed/functional:ro
+      - ./seed/scenario:/seed/scenario:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "[db-seed] waiting for Flyway-created tables ..."
+        until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        echo "[db-seed] functional base (seller1) ..."
+        mysql -h mysql-user  -uroot -proot user   < /seed/functional/user.sql
+        mysql -h mysql-order -uroot -proot orders < /seed/functional/order.sql
+        echo "[db-seed] consistency scenario (ctrich/ctbroke + hot/normal SKU) ..."
+        mysql -h mysql-user  -uroot -proot user   < /seed/scenario/user.sql
+        mysql -h mysql-order -uroot -proot orders < /seed/scenario/order.sql
+        echo "[db-seed] done."
+    networks: [commerce-consist]
+
+  # k6 부하 발생기 — run-consistency.sh 가 명시적으로 run 한다.
+  k6:
+    image: grafana/k6:0.51.0
+    volumes:
+      - ./k6:/scripts:ro
+      - ./results:/results
+    environment:
+      GATEWAY_URL: http://gateway
+      ORDER_TARGET: ${ORDER_TARGET:-100000}
+      ARRIVAL_RATE: ${ARRIVAL_RATE:-200}
+      RICH_POOL: ${RICH_POOL:-300}
+      BROKE_POOL: ${BROKE_POOL:-60}
+      RUN_LABEL: ${RUN_LABEL:-unknown}
+    depends_on:
+      gateway: { condition: service_started }
+    networks: [commerce-consist]
+
+networks:
+  commerce-consist:
+    driver: bridge
+
+volumes:
+  mysql-user-consist-data:
+  mysql-order-consist-data:

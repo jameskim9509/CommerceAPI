@@ -1,0 +1,9 @@
+# 이 하네스의 스크립트·k6·SQL·compose 는 bash/Docker(Linux) 에서 실행된다.
+# Windows 의 core.autocrlf 와 무관하게 항상 LF 로 저장·체크아웃해 CRLF 로 인한
+# "bad interpreter: /usr/bin/env bash^M" 류 실패를 막는다.
+*.sh   text eol=lf
+*.js   text eol=lf
+*.sql  text eol=lf
+*.yml  text eol=lf
+*.md   text eol=lf
+*.java text eol=lf
