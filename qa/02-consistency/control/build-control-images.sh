@@ -1,44 +1,46 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ADR-008 control(무방어) 이미지 빌드
+# ADR-008 control(무방어) 이미지 빌드 — 무방어 전용 브랜치 `control/no-defense` 에서 빌드
 #
-# 6종 방어 제거 방식(하이브리드):
-#   ①③④⑥ : 운영 소스에 이미 있는 @Value/@ConditionalOnProperty 플래그를 docker-compose.control.yml 이 env 로 OFF.
-#   ②⑤    : JPA @Version 은 프로퍼티로 못 끄므로, 이 스크립트가 빌드 중에만 @Version 제거 오버레이를 덮어써
-#            무방어 jar 를 만들고 commerce-orderapi:control / commerce-userapi:control 로 태깅한다.
+# 운영 코드(feature = treatment)에는 방어를 끄는 스위치가 일절 없다(footgun 0). control(무방어) 소스는
+# 별도 git 브랜치 `control/no-defense`(= 현재 feature − 6개 방어)로 관리하고, 이 스크립트는 그 브랜치 트리를
+# git archive 로 임시 폴더에 풀어서 무방어 jar 를 빌드한 뒤 commerce-orderapi/userapi:control 로 태깅한다.
 #
-# ★ 오버레이는 "빌드 중에만" 적용되고 trap 으로 항상 원본을 복구한다 (운영 소스 오염 없음).
-# ★ ADR-008 §control 빌드: 변형 버그가 위반으로 오계수되지 않게, 무카오스 clean 부하로 pre-flight 스모크 후 사용.
-#      예: CHAOS=off ORDER_TARGET=2000 ../run-consistency.sh control C-smoke   → verify N 이 0 근처인지 확인.
+#   ★ 작업 소스를 전혀 건드리지 않는다 (오버레이의 cp/덮어쓰기/trap-복구 없음, 격리 빌드).
+#   ★ drift: 한 번 측정이면 control/no-defense 를 feature 최신에서 뽑았으니 0. 반복 측정 시엔
+#      `git checkout control/no-defense && git merge feature` 로 상류 변경을 반영(충돌=방어 제거 지점, 눈에 보임) 후 재빌드.
+#   ★ ADR-008 §control 빌드: 변형 버그 오계수 방지용 무카오스 pre-flight 스모크 후 사용
+#      (예: CHAOS=off ORDER_TARGET=2000 ../run-consistency.sh control C-smoke → verify N 이 0 근처인지).
 #
-# 사용: ./build-control-images.sh
+# 사용: ./build-control-images.sh          (control/no-defense 브랜치가 있어야 함)
+# 환경변수: NODEF_BRANCH(기본 control/no-defense)
 # =============================================================================
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")"            # qa/02-consistency/control
-ROOT="../../.."                # repo root
+ROOT="../../.."                # repo root (git archive 는 어느 하위경로에서도 동작)
+NODEF_BRANCH="${NODEF_BRANCH:-control/no-defense}"
 
-PI="$ROOT/orderApi/src/main/java/com/zerobase/orderApi/domain/ProductItem.java"
-CU="$ROOT/userApi/src/main/java/com/zerobase/userApi/domain/customer/Customer.java"
+if ! git rev-parse --verify --quiet "refs/heads/$NODEF_BRANCH" >/dev/null 2>&1; then
+    echo "[control] ✗ 무방어 브랜치 '$NODEF_BRANCH' 가 없습니다."
+    echo "         현재 feature 에서 6개 방어를 제거한 브랜치를 먼저 만드세요 (README §control 참고)."
+    exit 1
+fi
 
-restore() {
-    [ -f "$PI.orig" ] && mv -f "$PI.orig" "$PI"
-    [ -f "$CU.orig" ] && mv -f "$CU.orig" "$CU"
-    echo "[control] 원본 @Version 소스 복구됨"
-}
-trap restore EXIT INT TERM
+TMP="$(mktemp -d)/nodef"
+mkdir -p "$TMP"
+cleanup() { rm -rf "$(dirname "$TMP")"; }
+trap cleanup EXIT INT TERM
 
-echo "[control] @Version 제거 오버레이 적용 (원본 백업 .orig) ..."
-cp "$PI" "$PI.orig"; cp "$CU" "$CU.orig"
-cp overlay/ProductItem.java "$PI"
-cp overlay/Customer.java    "$CU"
+echo "[control] '$NODEF_BRANCH' 트리를 임시 폴더로 추출 (git archive) ..."
+git archive "$NODEF_BRANCH" | tar -x -C "$TMP"
 
 echo "[control] 무방어 jar 빌드 (gradle bootJar -x test) ..."
-( cd "$ROOT" && ./gradlew :orderApi:bootJar :userApi:bootJar -x test )
+chmod +x "$TMP/gradlew" 2>/dev/null || true
+( cd "$TMP" && ./gradlew :orderApi:bootJar :userApi:bootJar -x test )
 
 echo "[control] control 태그 이미지 빌드 ..."
-docker build -t commerce-orderapi:control "$ROOT/orderApi"
-docker build -t commerce-userapi:control  "$ROOT/userApi"
+docker build -t commerce-orderapi:control "$TMP/orderApi"
+docker build -t commerce-userapi:control  "$TMP/userApi"
 
-echo "[control] commerce-orderapi:control / commerce-userapi:control 빌드 완료 ✓"
-# trap restore 가 EXIT 에서 원본을 복구 → 이후 treatment 빌드는 정상 @Version 소스로 진행된다.
+echo "[control] commerce-orderapi:control / commerce-userapi:control 빌드 완료 ✓ (작업 소스 무변경)"

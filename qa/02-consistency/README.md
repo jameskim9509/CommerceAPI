@@ -40,7 +40,7 @@ T3 Redis 멱등키 유실 → 중복 주문 · T4 Kafka 로그 전소 → 이벤
 ```
 qa/02-consistency/
 ├── docker-compose.qa.yml        treatment(방어 ON) 스택. name:consist · kafka 4파티션 · redis/kafka ephemeral
-├── docker-compose.control.yml   control 오버레이 — 6종 방어 OFF (①③④⑥ env, ②⑤ :control 이미지)
+├── docker-compose.control.yml   control 오버레이 — orderapi/userapi 를 :control 이미지(무방어)로 스왑
 ├── build-images.sh              treatment 이미지 빌드 (gradle bootJar → compose build)
 ├── run-consistency.sh           단일 arm 1회: up→seed→k6+chaos→quiescence→verify→down
 ├── run-kpi-matrix.sh            N회 interleaved (treatment/control) → results/KPI-MATRIX.md (median·range)
@@ -52,9 +52,10 @@ qa/02-consistency/
 │   ├── user.sql                 ctrich{1..300}(10M) + ctbroke{1..60}(500) — 고객마다 balance_history 기준행 필수
 │   └── order.sql                hot SKU(id 10001, count 1000) + 정상 SKU 50×5(재고 충분)
 ├── control/
-│   ├── build-control-images.sh  @Version 오버레이 적용→무방어 jar→:control 이미지→원본 복구(trap)
-│   └── overlay/{ProductItem,Customer}.java   ②⑤ @Version 제거본 (빌드 중에만 덮어씀)
+│   └── build-control-images.sh  control/no-defense 브랜치를 git archive 로 격리 빌드 → :control 이미지 (작업소스 무변경)
 └── results/                     실행 산출물 (*-k6-summary.json, *-verify.txt, KPI-MATRIX.md)
+
+# + git 브랜치 `control/no-defense` = feature − 6개 방어 (무방어 소스; 운영 코드엔 방어-off 스위치 없음)
 ```
 
 ## 사전 요구사항
@@ -127,20 +128,38 @@ diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p
 > ⚠ **T4 거짓 PASS**: "outbox 미발행=0"은 `sent_at IS NULL` 만 세므로 kafka 로그 전소(T4) 시 이미 sent 표기라
 > 손실을 놓친다 → T4 는 **돈 보존·PENDING/PAID 잔여**로만 잡히는 은닉 손실이다.
 
-## control(무방어) 빌드 — 하이브리드
+## control(무방어) 빌드 — 무방어 전용 브랜치
 
-| 방어 | 끄는 방식 | 위치 |
-|---|---|---|
-| ① 멱등 게이트 | env `CONSISTENCY_DEFENSE_IDEMPOTENCY=false` | `IdempotencyService` (`@Value`) |
-| ⑥ dedup | env `CONSISTENCY_DEFENSE_DEDUP=false` | 양 모듈 `IdempotentEventHandler` (`@Value`) |
-| ③ 보상(환불) | env `CONSISTENCY_DEFENSE_REFUND=false` | userApi `RefundConsumer` (`@ConditionalOnProperty`) |
-| ④ 잔액 검증 | env `CONSISTENCY_DEFENSE_BALANCE_CHECK=false` | userApi `CustomerBalanceHistoryService` (`@Value`) |
-| ②⑤ @Version | 소스 오버레이(빌드 중에만) → `:control` 이미지 | `control/overlay/{ProductItem,Customer}.java` |
+**운영 코드(feature = treatment)에는 방어를 끄는 스위치가 일절 없다** — prod 에서 실수로 방어가 꺼지는
+footgun 을 원천 차단한다. control(무방어) 소스는 **별도 git 브랜치 `control/no-defense`(= feature − 6개 방어)**
+로 관리하고, `:control` 이미지는 그 브랜치에서 빌드한다.
 
-①③④⑥ 플래그는 **기본값을 각 모듈 `application.yml` 에 `consistency.defense.*: true` 로 명시**(= treatment/현재 동작).
-`docker-compose.control.yml` 이 **env 로 override** 해 control 에서만 false 로 내린다(env 가 yaml 보다 우선순위 높음, 재빌드 불필요).
-②⑤ 는 JPA `@Version` 이라 프로퍼티로 못 꺼서 `:control` 이미지(오버레이)가 담당한다.
-`control/build-control-images.sh` 는 오버레이를 **빌드 중에만** 덮어쓰고 `trap` 으로 원본을 복구한다(운영 소스 오염 없음).
+| 방어 | 제거 (control/no-defense 브랜치에서) |
+|---|---|
+| ① 멱등 게이트 | `IdempotencyService.execute()` 가 게이트 없이 매 요청 실행 |
+| ② 재고 낙관적 락 | `ProductItem` 의 `@Version` 삭제 |
+| ③ 환불 보상 | `RefundConsumer` 가 이벤트만 소비, 환불 안 함 |
+| ④ 잔액 검증 | `CustomerBalanceHistoryService` 의 `NOT_ENOUGH_BALANCE` 검사 삭제 |
+| ⑤ 잔액 낙관적 락 | `Customer` 의 `@Version` 삭제 |
+| ⑥ dedup | `IdempotentEventHandler`(양 모듈)의 `processed_events` 검사 삭제 |
+
+`control/build-control-images.sh` 는 `control/no-defense` 트리를 **git archive 로 임시 폴더에 풀어 격리 빌드** →
+`commerce-{orderapi,userapi}:control` 태깅한다(**작업 소스를 전혀 안 건드림** — 오버레이의 cp/trap-복구 없음).
+`docker-compose.control.yml` 은 그 이미지로 스왑만 하고, control 실행은 반드시 `--no-build`.
+
+**드리프트 관리**: 한 번 측정이면 `control/no-defense` 를 feature 최신에서 뽑았으니 drift 0.
+반복 측정 시엔 `git checkout control/no-defense && git merge feature` 로 상류 변경을 반영한다 —
+**충돌 지점이 곧 방어 제거 지점**이라, 오버레이의 "조용한 drift"와 달리 어긋남이 눈에 보인다.
+
+### control/no-defense 브랜치 (재)생성
+
+```bash
+git switch -c control/no-defense feature/66-consistency-integration-scenario   # 최초 1회
+# 6개 방어 제거: @Version(ProductItem·Customer) 삭제 + 멱등 게이트/dedup/환불/잔액검증 제거
+git commit -am "chore(control): 무방어 빌드 — 6종 방어 제거"
+git switch feature/66-consistency-integration-scenario
+# 이후 반복 측정 전: git switch control/no-defense && git merge feature (충돌=방어지점 확인) && git switch -
+```
 
 ## 알려진 제약 / 정직성
 

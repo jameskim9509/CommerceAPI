@@ -1,7 +1,6 @@
 package com.zerobase.userApi.saga;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -20,11 +19,6 @@ public class IdempotentEventHandler {
 
     private final ProcessedEventRepository processedEventRepository;
     private final TransactionTemplate transactionTemplate;
-
-    // [ADR-008 통합 시나리오] 원하는 장애 ⑥ 이벤트 중복/역순 배달 방어(processed_events dedup) on/off.
-    // 기본 true → treatment. control(무방어) 빌드만 false. (⑤ 잔액 @Version 제거는 control 오버레이가 담당)
-    @Value("${consistency.defense.dedup:true}")
-    private boolean dedupDefenseEnabled = true;   // Spring 미주입(순수 단위테스트)에서도 방어 ON 유지
 
     public IdempotentEventHandler(ProcessedEventRepository processedEventRepository,
                                   PlatformTransactionManager transactionManager) {
@@ -58,11 +52,6 @@ public class IdempotentEventHandler {
     }
 
     private <E> void doHandle(UUID eventId, String consumerName, E event, Consumer<E> processor) {
-        // control(무방어): dedup 없이 매 배달을 재처리 → 중복 결제/환불 부작용 노출.
-        if (!dedupDefenseEnabled) {
-            processor.accept(event);
-            return;
-        }
         if (eventId == null) {
             log.warn("Event without eventId received for consumer={}, processing without idempotency", consumerName);
             processor.accept(event);
