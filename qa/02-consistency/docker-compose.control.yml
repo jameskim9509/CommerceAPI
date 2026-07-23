@@ -1,0 +1,25 @@
+# =============================================================================
+# ADR-008 control(무방어) 오버레이 — treatment(docker-compose.qa.yml) 위에 얹어 6종 방어를 모두 끈다.
+#
+#   ①③④⑥ : env 로 OFF (운영 소스의 @Value / @ConditionalOnProperty 플래그. 기본 true → 여기서만 false)
+#   ②⑤    : @Version 제거된 :control 이미지 (control/build-control-images.sh 산출물)
+#
+# ★ 반드시 --no-build 로 기동한다. --no-build 없이 build 하면 orderapi/userapi 를 현재(방어 ON) 소스로 다시
+#   빌드해 :control 태그를 덮어써 무방어 빌드가 오염된다 (run-consistency.sh control 은 --no-build 사용).
+#
+# 사용: docker compose -f docker-compose.qa.yml -f docker-compose.control.yml up -d --no-build --scale orderapi=4
+# =============================================================================
+
+services:
+  orderapi:
+    image: commerce-orderapi:control          # ②(@Version 제거) 포함
+    environment:
+      CONSISTENCY_DEFENSE_IDEMPOTENCY: "false"   # ① 멱등 게이트 off
+      CONSISTENCY_DEFENSE_DEDUP: "false"         # ⑥ processed_events dedup off (order side)
+
+  userapi:
+    image: commerce-userapi:control           # ⑤(@Version 제거) 포함
+    environment:
+      CONSISTENCY_DEFENSE_DEDUP: "false"         # ⑥ processed_events dedup off (user side)
+      CONSISTENCY_DEFENSE_REFUND: "false"        # ③ 재고 실패→환불 보상 off (RefundConsumer 비활성)
+      CONSISTENCY_DEFENSE_BALANCE_CHECK: "false" # ④ 잔액 부족 검증 off (음수 잔액 허용)
