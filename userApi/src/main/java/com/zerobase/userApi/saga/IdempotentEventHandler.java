@@ -24,7 +24,7 @@ public class IdempotentEventHandler {
     // [ADR-008 통합 시나리오] 원하는 장애 ⑥ 이벤트 중복/역순 배달 방어(processed_events dedup) on/off.
     // 기본 true → treatment. control(무방어) 빌드만 false. (⑤ 잔액 @Version 제거는 control 오버레이가 담당)
     @Value("${consistency.defense.dedup:true}")
-    private boolean dedupDefenseEnabled;
+    private boolean dedupDefenseEnabled = true;   // Spring 미주입(순수 단위테스트)에서도 방어 ON 유지
 
     public IdempotentEventHandler(ProcessedEventRepository processedEventRepository,
                                   PlatformTransactionManager transactionManager) {

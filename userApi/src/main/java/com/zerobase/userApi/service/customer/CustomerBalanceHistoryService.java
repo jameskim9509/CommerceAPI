@@ -20,7 +20,7 @@ public class CustomerBalanceHistoryService {
     // [ADR-008 통합 시나리오] 원하는 장애 ④ 잔액 부족→결제 실패 방어(잔액 검증) on/off.
     // 기본 true → treatment. control(무방어) 빌드만 false 로 내려 잔액 부족 검증을 건너뛴다(음수 잔액 허용).
     @Value("${consistency.defense.balance-check:true}")
-    private boolean balanceCheckDefenseEnabled;
+    private boolean balanceCheckDefenseEnabled = true;   // Spring 미주입(순수 단위테스트)에서도 방어 ON 유지
 
     // 오류에 대해 수행된 트랜잭션 기록
     @Transactional(noRollbackFor = {CustomException.class})
