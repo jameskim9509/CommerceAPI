@@ -78,14 +78,21 @@ cat results/T-smoke-verify.txt        # N 이 0 근처면 하네스 정상
 cat results/KPI-MATRIX.md
 ```
 
-단일 arm 만:
+### 수동 1회 측정 (현실적 최소 — 각 arm 1회씩)
+
+매트릭스 자동화(≥10회) 없이 손으로 한 번씩만 돌리는 경로. control/treatment 이미지를 각각 빌드해두고
+arm 당 1회 실행한 뒤 `results/*-verify.txt` 의 N(control) vs r(treatment) 를 비교한다.
 
 ```bash
-./build-images.sh
-./control/build-control-images.sh                       # control arm 을 돌릴 때만
+./build-images.sh                                       # treatment 이미지
+./control/build-control-images.sh                       # control 이미지 (:control)
 ORDER_TARGET=100000 ./run-consistency.sh treatment T-run1
 ORDER_TARGET=100000 ./run-consistency.sh control   C-run1
+diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p' results/T-run1-verify.txt)
 ```
+
+> ⚠ **N=1 은 점추정**이다. ADR-008 §재현 하네스 4 는 잔여 blast-radius 때문에 ≥10회 interleaved(중앙값·범위)를
+> 권장한다. 수동 1회는 방향성(N≫r) 확인용이며, 리포트에 **"N=1 point estimate"** 로 명시할 것(단일 수치 세탁 금지).
 
 ## 통합 시나리오 구성 (기본 10만 건)
 
