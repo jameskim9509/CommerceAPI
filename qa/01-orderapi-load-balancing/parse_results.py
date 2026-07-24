@@ -1,72 +1,50 @@
-"""Parse k6 --summary-export JSON and pretty-print key metrics."""
+"""k6 결과 3개(1/2/4 instance)를 읽어 인스턴스 스케일에 따른 개선을 비교한다 (cross-run).
+per-run 상세 지표(latency/throughput/에러율/분배)는 k6 handleSummary
+(실행 직후 stdout · {label}-summary.json)가 담당한다. 여기서는 실험 간 비교만."""
 import json
-import sys
 from pathlib import Path
 
+LABELS = ('1_instance', '2_instance', '4_instance')
 
-def fmt(v, suffix=''):
-    if v is None:
-        return 'n/a'
-    if isinstance(v, (int, float)):
-        return f'{v:.1f}{suffix}'
-    return str(v)
+
+def load(label, results_dir):
+    f = results_dir / f'{label}-k6-summary.json'
+    if not f.exists():
+        return None
+    with f.open(encoding='utf-8') as fp:
+        m = json.load(fp).get('metrics', {})
+    return {
+        'p99': m.get('http_req_duration{name:order_create}', {}).get('p(99)'),
+        'tps': m.get('iterations', {}).get('rate'),   # 초당 완료주문수 = handleSummary throughput 과 동일 정의
+    }
+
+
+def pct(v):
+    return f'{v:+.1f}%' if v is not None else 'n/a'
 
 
 def main():
     results_dir = Path(__file__).parent / 'results'
-    for label in ('E1', 'E2', 'E3'):
-        f = results_dir / f'{label}-k6-summary.json'
-        if not f.exists():
-            print(f'== {label} (file not found) ==\n')
+    data = {label: load(label, results_dir) for label in LABELS}
+
+    base = data.get('1_instance')
+    if not base or base.get('p99') is None or base.get('tps') is None:
+        print('1_instance 결과가 없어 비교 불가 — 먼저 1_instance 측정 필요')
+        return
+
+    print('== 인스턴스 스케일 비교 (1_instance 기준) ==')
+    for label in LABELS:
+        r = data.get(label)
+        if not r or r.get('p99') is None or r.get('tps') is None:
+            print(f'  {label}: (결과 없음)')
             continue
-
-        with f.open(encoding='utf-8') as fp:
-            d = json.load(fp)
-        m = d.get('metrics', {})
-        root_checks = d.get('root_group', {}).get('checks', {})
-
-        # Sub-metrics like http_req_duration{name:order_create} appear as top-level keys
-        order_dur = m.get('http_req_duration{name:order_create}', {})
-        order_fail = m.get('http_req_failed{name:order_create}', {})
-
-        # Fallback: aggregate http_req_duration if tagged variant missing
-        if not order_dur:
-            order_dur = m.get('http_req_duration', {})
-
-        print(f'== {label} ==')
-        print(f'  total reqs:           {m.get("http_reqs", {}).get("count")}')
-        print(f'  throughput (req/s):   {fmt(m.get("http_reqs", {}).get("rate"))}')
-        print(f'  iterations:           {m.get("iterations", {}).get("count")}')
-        print(f'  -- order_create latency (ms) --')
-        print(f'  avg:                  {fmt(order_dur.get("avg"))}')
-        print(f'  median (p50):         {fmt(order_dur.get("med"))}')
-        print(f'  p90:                  {fmt(order_dur.get("p(90)"))}')
-        print(f'  p95:                  {fmt(order_dur.get("p(95)"))}')
-        print(f'  max:                  {fmt(order_dur.get("max"))}')
-        rate = order_fail.get('rate')
-        print(f'  fail rate (order):    {fmt(rate * 100 if rate is not None else None, "%")}')
-        print(f'  idempotency replays:  {m.get("idempotency_replay_attempts", {}).get("count")}')
-        print(f'  멱등성 위반:           {m.get("duplicate_order_responses", {}).get("count")}')
-
-        # Per-instance distribution
-        inst = m.get('instance_hits', {})
-        sub = inst.get('submetrics') or {}
-        if sub:
-            print(f'  -- 인스턴스별 분배 --')
-            for name, sm in sub.items():
-                print(f'    {name}: {sm.get("count")}')
-
-        # checks
-        if root_checks:
-            print(f'  -- checks --')
-            for name, c in root_checks.items():
-                p = c.get('passes', 0)
-                f_ = c.get('fails', 0)
-                tot = p + f_
-                pct = (p / tot * 100) if tot else 0
-                print(f'    {name}: {p}/{tot} ({pct:.2f}%)')
-
-        print()
+        if label == '1_instance':
+            print(f'  {label}: p99={r["p99"]:.1f}ms, throughput={r["tps"]:.1f} 주문/s  (기준)')
+        else:
+            p99_drop = (base['p99'] - r['p99']) / base['p99'] * 100   # (p99_1 − p99_N)/p99_1
+            tps_gain = (r['tps'] - base['tps']) / base['tps'] * 100   # (tps_N − tps_1)/tps_1
+            print(f'  {label}: p99={r["p99"]:.1f}ms, throughput={r["tps"]:.1f} 주문/s'
+                  f'  →  p99 감소율 {pct(p99_drop)}, throughput 증가율 {pct(tps_gain)}')
 
 
 if __name__ == '__main__':

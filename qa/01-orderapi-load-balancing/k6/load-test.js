@@ -26,12 +26,11 @@
 //   ORDER_COUNT (기본 100000) — 총 주문(=iteration) 수
 //   PRODUCT_ITEM_COUNT (기본 500)
 //   MAX_DURATION (기본 30m)
-//   EXPERIMENT_LABEL (예: E1/E2/E3)
+//   EXPERIMENT_LABEL (예: 1_instance/2_instance/4_instance)
 // =============================================================================
 
 import http from 'k6/http';
 import { check } from 'k6';
-import { Counter, Trend } from 'k6/metrics';
 import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 
 const GATEWAY_URL = __ENV.GATEWAY_URL || 'http://gateway';
@@ -40,12 +39,6 @@ const USER_COUNT = parseInt(__ENV.USER_COUNT || String(VUS));
 const ORDER_COUNT = parseInt(__ENV.ORDER_COUNT || '100000');
 const PRODUCT_ITEM_COUNT = parseInt(__ENV.PRODUCT_ITEM_COUNT || '500');
 const EXPERIMENT_LABEL = __ENV.EXPERIMENT_LABEL || 'unknown';
-
-const orderLatency = new Trend('order_create_latency', true);
-const cartLatency = new Trend('cart_add_latency', true);
-const instanceHits = new Counter('instance_hits');
-const idempotencyReplays = new Counter('idempotency_replay_attempts');
-const duplicateOrderResponses = new Counter('duplicate_order_responses');
 
 export const options = {
     scenarios: {
@@ -57,6 +50,7 @@ export const options = {
         },
     },
     setupTimeout: '10m',
+    summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
     thresholds: {
         'http_req_duration{name:order_create}': ['p(95)<1000', 'p(99)<2000'],
         'http_req_failed{name:order_create}': ['rate<0.01'],
@@ -115,7 +109,6 @@ export default function (data) {
     // 1) cart_add (order 가 Redis 카트를 필수로 요구하므로 매 주문 직전 담는다)
     const cartRes = http.post(`${GATEWAY_URL}/order/customer/cart`, JSON.stringify(productPayload),
         { headers: auth, tags: { name: 'cart_add' } });
-    cartLatency.add(cartRes.timings.duration);
     if (cartRes.status !== 200) return;   // 카트 실패 시 주문 스킵
 
     // 2) order (측정 대상)
@@ -124,22 +117,7 @@ export default function (data) {
     const orderRes = http.post(`${GATEWAY_URL}/order/customer/cart/order`, JSON.stringify(orderBody),
         { headers: { ...auth, 'Idempotency-Key': idemKey }, tags: { name: 'order_create' } });
 
-    check(orderRes, {
-        'order 200': (r) => r.status === 200,
-        'has X-Instance-Id': (r) => !!(r.headers['X-Instance-Id'] || r.headers['x-instance-id']),
-    });
-    const instanceId = orderRes.headers['X-Instance-Id'] || orderRes.headers['x-instance-id'] || 'unknown';
-    instanceHits.add(1, { instance: instanceId });
-    orderLatency.add(orderRes.timings.duration, { instance: instanceId });
-
-    // 5% 확률로 같은 Idempotency-Key 재전송 (ADR-001 멱등성 검증)
-    if (Math.random() < 0.05) {
-        idempotencyReplays.add(1);
-        const replay = http.post(`${GATEWAY_URL}/order/customer/cart/order`, JSON.stringify(orderBody),
-            { headers: { ...auth, 'Idempotency-Key': idemKey }, tags: { name: 'order_replay' } });
-        if (replay.status === 200 && replay.body !== orderRes.body) duplicateOrderResponses.add(1);
-    }
-    // think time 없음 — "거의 동시" 버스트 유지
+    check(orderRes, { 'order 200': (r) => r.status === 200 });
 }
 
 export function handleSummary(data) {
@@ -148,24 +126,21 @@ export function handleSummary(data) {
     const f1 = (v) => (typeof v === 'number' ? v.toFixed(1) : 'n/a');
     const summary = {
         experiment: EXPERIMENT_LABEL,
-        order_count: g('http_reqs{name:order_create}', 'count'),
-        order_throughput_rps: g('http_reqs{name:order_create}', 'rate'),
+        order_count: g('iterations', 'count'),
+        order_throughput_rps: g('iterations', 'rate'),
         order_p50: g('http_req_duration{name:order_create}', 'med'),
         order_p95: g('http_req_duration{name:order_create}', 'p(95)'),
         order_p99: g('http_req_duration{name:order_create}', 'p(99)'),
         order_fail_rate: g('http_req_failed{name:order_create}', 'rate'),
         cart_add_p95: g('http_req_duration{name:cart_add}', 'p(95)'),
-        idempotency_replays: g('idempotency_replay_attempts', 'count'),
-        idempotency_violations: g('duplicate_order_responses', 'count'),
         full_metrics: m,
     };
     const fr = summary.order_fail_rate;
     const stdout = `\n=== orderApi LB (${EXPERIMENT_LABEL}) ===\n`
-        + `orders: ${summary.order_count}, order throughput: ${f1(summary.order_throughput_rps)} req/s\n`
+        + `orders: ${summary.order_count}, order throughput: ${f1(summary.order_throughput_rps)} orders/s\n`
         + `order p50/p95/p99: ${f1(summary.order_p50)} / ${f1(summary.order_p95)} / ${f1(summary.order_p99)} ms\n`
         + `cart_add p95: ${f1(summary.cart_add_p95)} ms\n`
-        + `order fail: ${typeof fr === 'number' ? (fr * 100).toFixed(2) + '%' : 'n/a'}, `
-        + `idempotency violations: ${summary.idempotency_violations}\n`;
+        + `order fail: ${typeof fr === 'number' ? (fr * 100).toFixed(2) + '%' : 'n/a'}\n`;
     return {
         [`/results/${EXPERIMENT_LABEL}-summary.json`]: JSON.stringify(summary, null, 2),
         stdout,

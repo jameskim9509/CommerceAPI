@@ -3,10 +3,10 @@
 `qa/` 는 시나리오별 폴더로 구성된다. 각 폴더는 자립형(self-contained)이라
 자기 폴더 안의 compose·seed·k6·스크립트만으로 실행된다.
 
-| 시나리오 | 목적 | 진입점 | 결과 |
-|---|---|---|---|
-| [**01-orderapi-load-balancing/**](01-orderapi-load-balancing/) | orderApi 1→2→4 스케일 시 **LoadBalancer 효과** 정량화 (ADR-005 시나리오 3) | 수동 측정 절차 ([README](01-orderapi-load-balancing/README.md)) | `E1/E2/E3` |
-| **02-consistency/** _(예정)_ | 멱등성·낙관적락(초과판매)·SAGA보상 통합 정합성 검증 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | ADR-008 명세대로 **신규 작성 예정** | — |
+| 시나리오                                                            | 목적                                                                                                                   | 진입점                                                         | 결과         |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------ |
+| [**01-orderapi-load-balancing/**](01-orderapi-load-balancing/) | orderApi 1→2→4 스케일 시**LoadBalancer 효과** 정량화 (ADR-005 시나리오 3)                                      | 수동 측정 절차 ([README](01-orderapi-load-balancing/README.md)) | `E1/E2/E3` |
+| **02-consistency/** _(예정)_                                | 멱등성·낙관적락(초과판매)·SAGA보상 통합 정합성 검증 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | ADR-008 명세대로**신규 작성 예정**                       | —           |
 
 > **02-consistency 는 아직 없다.** [ADR-008](../ADR/008-order-consistency-integration-scenario.md) 명세(주문 10만 건 통합 부하 + 주변 장애 T1~T6)에 맞춰 새로 작성한다.
 > 그 전까지 각 정합성 메커니즘의 개별 검증은 부하가 아니라 각 모듈 `src/test` 의 단위·통합 테스트가 담당한다.
@@ -31,6 +31,6 @@
 ## 공통 주의사항
 
 - Docker daemon + 약 8GB 메모리 / 8CPU 필요 (4 인스턴스 + MySQL×2 + Kafka 동시 기동).
-- Windows 는 Git Bash / WSL2. Git Bash 는 k6 컨테이너 경로(`/scripts`, `/results`) 보호를 위해 `export MSYS_NO_PATHCONV=1` 를 먼저 실행 (WSL2 는 불필요).
-- k6 를 `docker compose run` 으로 부를 때 **`--no-deps` 필수** — 없으면 의존성 트리가 다시 뜨며
-  `--scale orderapi=N` 이 기본값 1 로 리셋된다 (초기 측정을 통째로 무효화했던 인프라 버그).
+- Windows 는 WSL2. Linux 는 Bash.
+- orderapi replica 수는 `ORDERAPI_REPLICAS` env (`deploy.replicas` 주입) 로 정한다 — **세션 내내 export 유지**.
+  새 셸에서 k6 스텝만 재실행하면 변수가 없어 orderapi 가 기본 1 로 스케일 다운되니 주의.
