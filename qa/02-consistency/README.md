@@ -33,13 +33,12 @@
 
 ```
 qa/02-consistency/
-├── docker-compose.qa.yml        QA용 스택
-├── build-images.sh              현재 소스로 이미지 빌드
-├── run-consistency.sh           시나리오 1회 실행 + 집계
-├── run-repeat.sh                시나리오 N회 반복 + 집계
-├── chaos-schedule.sh            주변 장애 주입
+├── docker-compose.qa.yml        QA용 스택 (orderapi ×ORDERAPI_REPLICAS, kafka 4파티션)
+├── build-images.sh              현재 브랜치 소스로 이미지 빌드
+├── chaos-schedule.sh            주변 장애 주입 (부하와 동시에 백그라운드 실행)
 ├── quiescence-gate.sh           정착 대기 (비동기 흐름 종료 확인)
-├── verify-consistency.sh        정합성 검증
+├── verify-consistency.sh        정합성 검증 (run 1건 판정)
+├── aggregate-runs.sh            run 결과 집계 (원값·중앙값·범위)
 ├── k6/load-test-consistency.js  통합 시나리오 스크립트
 ├── seed/                        시드 데이터
 │   ├── user.sql
@@ -54,30 +53,84 @@ qa/02-consistency/
 - WSL2 또는 Bash
 - Docker (compose 환경)
 
-## 실행
+## 실행 — 수동 측정
 
-방어 상태는 **체크아웃한 브랜치**가 결정한다. 각 브랜치에서 같은 QA 를 돌려 두 측정을 얻는다.
+방어 상태는 **체크아웃한 브랜치**가 결정한다 (control 오버레이·이미지·토글 없음).
+무방어 브랜치와 방어 브랜치에서 **같은 절차를 그대로** 돌려 두 측정을 얻는다.
 
 ```bash
-# ── control(무방어) 측정 ──
-git checkout v1  
+# ── arm 선택: control(무방어) 은 v1, treatment(방어) 는 방어 브랜치 ──
+git checkout v1                                  # treatment: feature/66-consistency-integration-scenario
 cd qa/02-consistency
-./build-images.sh
-CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh C-smoke # 2000건 스모크 테스트
-ORDER_TARGET=100000 ./run-consistency.sh C-run1 # 실 테스트
+./build-images.sh                                # 브랜치를 바꿨으면 반드시 재빌드
+```
 
-# ── treatment(방어) 측정 ──
-git checkout feature/66-consistency-integration-scenario
-cd qa/02-consistency
-./build-images.sh
-CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh T-smoke # 2000건 스모크 테스트
-ORDER_TARGET=100000 ./run-consistency.sh T-run1 # 실 테스트
+한 run 은 아래 1)~8) 이다. 라벨만 바꿔가며 반복한다 (control `C-run1`, `C-run2` … / treatment `T-run1` …).
 
-# ── 비교 (KPI: N → r) ──
+```bash
+LABEL=C-run1                    # 체크아웃한 브랜치가 arm 을 결정한다 (treatment 면 T-run1)
+export ORDERAPI_REPLICAS=4      # compose deploy.replicas 로 주입 — 세션 내내 export 유지
+
+# 1) 이전 잔재 정리
+docker compose -f docker-compose.qa.yml down -v --remove-orphans
+
+# 2) QA 스택 기동 (k6 제외, orderapi ×4 × kafka 4파티션)
+docker compose -f docker-compose.qa.yml up -d \
+    mysql-user mysql-order redis kafka eureka userapi orderapi gateway db-seed
+
+# 3) 시드 + 레지스트리 전파 대기
+docker compose -f docker-compose.qa.yml wait db-seed
+sleep 60                                                # Eureka 등록 → gateway fetch 전파 여유 (db-seed 는 미보장)
+
+# 4) 카오스 백그라운드 — 주변 장애 T1~T4 를 부하 진행도에 앵커해 주입
+ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
+CHAOS_PID=$!                                            # 진행 확인: tail -f results/$LABEL-chaos.log
+
+# 5) k6 셸 진입
+RUN_LABEL=$LABEL ORDER_TARGET=100000 ARRIVAL_RATE=200 \
+    docker compose -f docker-compose.qa.yml run --rm --entrypoint sh k6
+
+# 6) k6 시나리오 실행 및 종료
+k6 run /scripts/load-test-consistency.js
+exit
+
+# 7) 카오스 종료 → 정착 대기 → 검증
+kill $CHAOS_PID 2>/dev/null                             # 미도달 앵커는 생략
+bash quiescence-gate.sh                                 # outbox·PENDING/PAID·consumer lag 이 멎을 때까지
+RUN_LABEL=$LABEL bash verify-consistency.sh             # → results/$LABEL-verify.txt
+
+# 8) 정리 후 다음 run 으로
+docker compose -f docker-compose.qa.yml down -v --remove-orphans
+```
+
+**스모크 (브랜치를 바꿀 때마다 1회)** — 변형 버그가 위반으로 오계수되지 않게, 카오스 없는 작은
+clean 부하로 먼저 잔여 0 을 확인한다. 1)~3)·5)~8) 은 그대로 두고 **4)(카오스) 만 생략**한 뒤
+라벨·부하 파라미터를 줄인다:
+
+```bash
+LABEL=C-smoke                   # treatment 는 T-smoke
+# 4) 실행하지 않음 (= 무카오스 baseline)
+# 5) 는 파라미터만 축소:
+RUN_LABEL=$LABEL ORDER_TARGET=2000 ARRIVAL_RATE=50 \
+    docker compose -f docker-compose.qa.yml run --rm --entrypoint sh k6
+# 7) kill 은 생략, quiescence-gate → verify-consistency 는 동일 → results/$LABEL-verify.txt 가 N=0 이어야 한다
+```
+
+**반복·집계** — 점추정 금지(ADR-008 §재현 하네스 4, 권장 ≥10회). arm 마다 run 을 쌓은 뒤 한 번 집계한다.
+
+```bash
+./aggregate-runs.sh C           # → results/C-AGGREGATE.md (원값·중앙값·범위)
+./aggregate-runs.sh T           # 방어 브랜치에서
+```
+
+**비교 (KPI: N → r)** — 두 AGGREGATE 의 중앙값을 비교한다. run 1건끼리 보려면:
+
+```bash
 diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p' results/T-run1-verify.txt)
 ```
 
-> **N회 반복 테스트**: `./run-repeat.sh N ~`
+> **`ORDERAPI_REPLICAS` 는 세션 내내 유지** — 새 셸에서 k6 스텝만 다시 돌리면 변수가 없어도 기본 4 로
+> 뜨지만, 다른 값으로 측정 중이었다면 조용히 4 로 되돌아간다.
 
 ## 통합 시나리오 구성 (기본 10만 건)
 

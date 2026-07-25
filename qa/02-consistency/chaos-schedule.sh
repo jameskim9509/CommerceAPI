@@ -11,10 +11,13 @@
 #   진행도 80% → T4  kafka 로그 전소: stop orderapi → rm -sf kafka → up -d kafka → start orderapi (볼륨 없어 -v 불필요)
 #
 # ★ 목적은 "통과 확인"이 아니라 깨지는 지점(복원력 gap) 노출. 넣으면 깨진다 → verify 가 잔여 r 로 계수.
-# ★ CHAOS=off (run-consistency.sh) 이면 이 스크립트는 호출되지 않는다 → pre-flight 스모크/무카오스 baseline 용.
+# ★ 무카오스 baseline(= pre-flight 스모크)에서는 이 스크립트를 아예 실행하지 않는다.
 #
-# 사용: COMPOSE_ARGS="-f docker-compose.qa.yml" ORDER_TARGET=100000 ./chaos-schedule.sh
-# 환경변수: POLL(기본 3) T2_DOWN_S(기본 25) HARD_TIMEOUT(기본 부하추정+정착)
+# 사용: 수동 측정 절차(README §실행)에서 k6 부하 직전에 백그라운드로 띄운다.
+#   ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
+#   CHAOS_PID=$!        # k6 종료 후 kill $CHAOS_PID
+# 환경변수: COMPOSE_ARGS(기본 -f docker-compose.qa.yml) POLL(기본 3) T2_DOWN_S(기본 25)
+#           HARD_TIMEOUT(기본 부하추정+정착)
 # =============================================================================
 set -uo pipefail
 export MSYS_NO_PATHCONV=1
@@ -25,8 +28,8 @@ ORDER_TARGET="${ORDER_TARGET:-100000}"
 ARRIVAL_RATE="${ARRIVAL_RATE:-200}"
 POLL="${POLL:-3}"
 T2_DOWN_S="${T2_DOWN_S:-25}"
-# 종료 보증(A80 앵커에만 의존하지 않음): run-consistency 는 부하 종료 후 grace 뒤 이 프로세스를 kill 하고,
-# 독립 실행 시엔 (1) 진행도 정체 감지(STALL_LIMIT) (2) 부하추정+정착 HARD_TIMEOUT 이 이중으로 종료를 보장.
+# 종료 보증(A80 앵커에만 의존하지 않음): 측정자가 k6 종료 후 kill 하는 게 기본이고, 놓치더라도
+# (1) 진행도 정체 감지(STALL_LIMIT) (2) 부하추정+정착 HARD_TIMEOUT 이 이중으로 종료를 보장.
 HARD_TIMEOUT="${HARD_TIMEOUT:-$(( ORDER_TARGET / ARRIVAL_RATE + 300 ))}"
 STALL_LIMIT="${STALL_LIMIT:-40}"     # 진행도 무변화 40*POLL(≈120s) → 남은 앵커 생략하고 종료
 SCOPE="username LIKE 'ctrich%'"
