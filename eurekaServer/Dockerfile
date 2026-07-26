@@ -9,7 +9,7 @@ WORKDIR /workspace
 COPY . .
 RUN chmod +x ./gradlew
 RUN --mount=type=cache,target=/root/.gradle \
-    ./gradlew :eurekaServer:bootJar -x test --no-daemon
+    ./gradlew :eurekaServer:bootJar --no-daemon
 
 FROM eclipse-temurin:17-jre
 RUN mkdir -p deploy
