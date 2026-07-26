@@ -208,8 +208,8 @@ services:
       - |
         set -e
         echo "[db-seed] waiting for Flyway-created tables ..."
-        until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
-        until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM outbox_events LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM outbox_events LIMIT 1' >/dev/null 2>&1; do sleep 3; done
         echo "[db-seed] consistency scenario (seller1 + ctrich + hot/normal SKU) ..."
         mysql -h mysql-user  -uroot -proot user   < /seed/user.sql
         mysql -h mysql-order -uroot -proot orders < /seed/order.sql
