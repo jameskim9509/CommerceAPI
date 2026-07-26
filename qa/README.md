@@ -6,10 +6,11 @@
 | 시나리오 | 목적 | 진입점 | 결과 |
 |---|---|---|---|
 | [**01-load-balancing/**](01-load-balancing/) | orderApi 1→2→4 스케일 시 **LoadBalancer 효과** 정량화 (ADR-005 시나리오 3) | `run-experiments.sh` / `run-experiments-order-only.sh` | `E1/E2/E3`, `E1o/E2o/E3o` |
-| [**02-consistency/**](02-consistency/) | 5종 방어(멱등·재고락·SAGA보상·잔액락·dedup)의 통합 정합성 — 무방어(N) vs 방어(r) 집계 KPI + 교차 DB 불변식 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | `run-kpi-matrix.sh` / `run-consistency.sh` | `KPI-MATRIX.md`, `*-verify.txt` (전부 `⟨측정전⟩`) |
+| [**02-consistency/**](02-consistency/) | 5종 방어(멱등·재고락·SAGA보상·잔액락·dedup)의 통합 정합성 — 무방어(N) vs 방어(r) 집계 KPI + 교차 DB 불변식 ([ADR-008](../ADR/008-order-consistency-integration-scenario.md)) | 수동 측정 절차 ([README](02-consistency/README.md)) | `*-verify.txt`, `*-AGGREGATE.md` (전부 `⟨측정전⟩`) |
 
 > **02-consistency 는 실행 가능한 하네스로 구현됐다** (ADR-008 명세: 주문 10만 건 통합 부하 + 원하는 장애 5종 + 주변 장애 T1~T4).
-> 단, 측정치는 전부 `⟨측정전⟩` — `run-kpi-matrix.sh` 를 실제로 돌린 뒤 채운다. 상세는 [02-consistency/README.md](02-consistency/README.md).
+> 단, 측정치는 전부 `⟨측정전⟩` — README §실행 의 수동 절차를 브랜치별(무방어 / 방어)로 돌린 뒤 채운다.
+> 상세는 [02-consistency/README.md](02-consistency/README.md).
 
 ## 빠른 시작
 
@@ -18,8 +19,11 @@
 ./qa/01-load-balancing/run-experiments.sh
 ```
 
+시나리오 ② 정합성은 자동 실행 진입점이 없다 — 측정자가 **스택 기동 → 시드 → 카오스 → k6 → 정착 →
+검증** 을 직접 수행한다. 절차는 [02-consistency/README.md](02-consistency/README.md) §실행 — 수동 측정.
+
 각 시나리오의 상세(측정 모델·합격 기준·구조)는 폴더 안 README 참조:
-[01-load-balancing/README.md](01-load-balancing/README.md)
+[01-load-balancing/README.md](01-load-balancing/README.md) · [02-consistency/README.md](02-consistency/README.md)
 
 ## 공통 규칙
 
@@ -35,5 +39,8 @@
 
 - Docker daemon + 약 8GB 메모리 / 8CPU 필요 (4 인스턴스 + MySQL×2 + Kafka 동시 기동).
 - Windows 는 Git Bash / WSL2 에서 실행 (스크립트가 `MSYS_NO_PATHCONV=1` 로 경로 변환 회피).
-- k6 를 `docker compose run` 으로 부를 때 **`--no-deps` 필수** — 없으면 의존성 트리가 다시 뜨며
-  `--scale orderapi=N` 이 기본값 1 로 리셋된다 (초기 측정을 통째로 무효화했던 인프라 버그).
+- **orderapi 인스턴스 수 지정 방식이 시나리오마다 다르다.**
+  - `01-load-balancing` — `--scale orderapi=N`. k6 를 `docker compose run` 으로 부를 때 **`--no-deps` 필수**
+    (없으면 의존성 트리가 다시 뜨며 스케일이 기본값 1 로 리셋된다 — 초기 측정을 통째로 무효화했던 인프라 버그).
+  - `02-consistency` — `ORDERAPI_REPLICAS` env (`deploy.replicas` 주입, 기본 4). 별도 `docker compose run`
+    에도 스케일이 유지돼 `--no-deps` 가 필요 없다. 다만 **세션 내내 export 유지**할 것.
