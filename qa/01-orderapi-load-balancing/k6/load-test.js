@@ -31,7 +31,8 @@
 
 import http from 'k6/http';
 import { check } from 'k6';
-import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
+// uuidv4 는 아래 로컬 구현 사용. 원격 jslib.k6.io import 는 Docker 격리 네트워크에서
+// DNS(server misbehaving)로 실패하고, 부하 측정이 외부 네트워크에 의존해서도 안 됨.
 
 const GATEWAY_URL = __ENV.GATEWAY_URL || 'http://gateway';
 const VUS = parseInt(__ENV.VUS || '500');
@@ -51,13 +52,26 @@ export const options = {
     },
     setupTimeout: '10m',
     summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
+    // 유효성 가드(README): 지연시간이 아니라 "낮은 에러율"만 판정 — order 실패율 < 1%.
+    // p95/p99 등 성능 지표는 원값을 기록해 인스턴스 1/2/4 를 직접 비교한다.
+    // k6 는 태그 서브메트릭(http_req_duration{name:...})을 "해당 셀렉터에 threshold 가
+    // 걸려 있을 때만" 요약(handleSummary data.metrics)에 만든다. 성능값은 판정하지 않되
+    // 서브메트릭만 생성하려고 항상 통과하는 no-op threshold(max>=0)를 건다.
     thresholds: {
-        'http_req_duration{name:order_create}': ['p(95)<1000', 'p(99)<2000'],
         'http_req_failed{name:order_create}': ['rate<0.01'],
-        'http_req_failed{name:cart_add}': ['rate<0.01'],
+        'http_req_duration{name:order_create}': ['max>=0'],   // no-op — 서브메트릭 생성용
+        'http_req_duration{name:cart_add}': ['max>=0'],       // no-op — 서브메트릭 생성용
     },
     tags: { experiment: EXPERIMENT_LABEL },
 };
+
+// uuid v4 (RFC 4122) 로컬 구현 — Idempotency-Key 생성용. 원격 import 제거로 오프라인 재현성 확보.
+function uuidv4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+}
 
 // 상품/아이템 이름 규칙 — seed/order.sql 의 QaProduct{nnn}-Item{k} 와 일치해야 검증 통과
 function pad3(n) { return ('000' + n).slice(-3); }
@@ -115,7 +129,7 @@ export default function (data) {
     const idemKey = uuidv4();
     const orderBody = { messages: [], productList: [productPayload] };
     const orderRes = http.post(`${GATEWAY_URL}/order/customer/cart/order`, JSON.stringify(orderBody),
-        { headers: { ...auth, 'Idempotency-Key': idemKey }, tags: { name: 'order_create' } });
+        { headers: Object.assign({}, auth, { 'Idempotency-Key': idemKey }), tags: { name: 'order_create' } });
 
     check(orderRes, { 'order 200': (r) => r.status === 200 });
 }
