@@ -23,6 +23,11 @@ set -uo pipefail
 export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")"
 
+# ★ stdin 을 끊는다 — 이 스크립트는 `... &` 로 백그라운드 실행이 전제인데(위 사용법),
+#   docker compose exec 는 -T 로도 stdin 을 붙이므로 백그라운드 잡이 터미널을 읽으려다
+#   SIGTTIN 을 받아 즉시 "Stopped" 된다. 이 스크립트는 stdin 을 쓰지 않으니 안전하다.
+exec 0</dev/null
+
 COMPOSE_ARGS="${COMPOSE_ARGS:--f docker-compose.qa.yml}"
 ORDER_TARGET="${ORDER_TARGET:-100000}"
 ARRIVAL_RATE="${ARRIVAL_RATE:-200}"
