@@ -84,16 +84,12 @@ kubectl -n kube-system wait --for=condition=Available deploy/metrics-server --ti
 이미지 태그는 `base/` 의 이미지 이름과 일치해야 한다(`commerce-<module>:latest`). 아래는 **PowerShell** 기준.
 
 ```powershell
-# jar 빌드 (repo 루트). JAVA_HOME 은 JDK 17 을 가리켜야 함.
-# 테스트를 건너뛰면 orderApi REST Docs 스니펫(build/generated-snippets)이 없어
-# asciidoctor 가 실패하므로 함께 제외한다(CI 는 테스트를 먼저 돌려 회피).
-.\gradlew.bat clean build -x test -x asciidoctor
-
-# 백엔드 이미지 빌드 (각 모듈의 Dockerfile 은 build/libs/<module>-0.1.jar 를 기대)
-docker build -t commerce-eureka  ./eurekaServer
-docker build -t commerce-gateway ./gateway
-docker build -t commerce-userapi ./userApi
-docker build -t commerce-orderapi ./orderApi
+# 백엔드 이미지 빌드 — 멀티스테이지 Dockerfile 이 컨테이너 안에서 bootJar 까지 만든다.
+#   build context 는 레포 루트(멀티모듈 Gradle). 호스트 gradle 프리빌드 불필요.
+docker build -t commerce-eureka   -f eurekaServer/Dockerfile .
+docker build -t commerce-gateway  -f gateway/Dockerfile      .
+docker build -t commerce-userapi  -f userApi/Dockerfile      .
+docker build -t commerce-orderapi -f orderApi/Dockerfile     .
 
 # 프런트엔드(web) 이미지 빌드 — monorepo 루트를 build context 로 (pnpm workspace 해결)
 docker build -t commerce-web -f apps/web/Dockerfile .

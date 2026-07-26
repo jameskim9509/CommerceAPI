@@ -68,7 +68,7 @@ const tokenCache = {};
 
 function pad3(n) { return ('000' + n).slice(-3); }
 
-// seed/order.sql 와 일치해야 하는 이름 규칙 (전부 ASCII)
+// seed/order.sql 와 일치해야 하는 이름 규칙
 function hotSku() {
     return { productId: 10001, itemId: 10001, sellerId: 1, price: 1000,
              productName: 'CT-HOT-Limited', productDesc: 'CT hot limited SKU', itemName: 'CT-HOT-Limited-Item' };

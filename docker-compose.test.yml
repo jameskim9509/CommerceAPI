@@ -77,8 +77,8 @@ services:
   # ADR-005: 서비스 디스커버리 레지스트리
   eureka:
     build:
-      context: ./eurekaServer
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: eurekaServer/Dockerfile
     container_name: commerce-eureka-test
     ports:
       - "8761:8761"
@@ -95,8 +95,8 @@ services:
   # 인스턴스당 자원 4 CPU / 2GB 로 제한 → 단일 인스턴스 천장 도달 시점을 명확히.
   userapi:
     build:
-      context: ./userApi
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: userApi/Dockerfile
     container_name: commerce-userapi-test
     environment:
       SPRING_PROFILES_ACTIVE: test
@@ -132,8 +132,8 @@ services:
   # container_name 과 호스트 port 바인딩은 제거 (--scale 시 충돌 방지). 외부 접근은 gateway 경유.
   orderapi:
     build:
-      context: ./orderApi
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: orderApi/Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
       MYSQL_HOST: mysql-order
@@ -168,8 +168,8 @@ services:
   # 인스턴스당 자원 4 CPU / 2GB 로 제한 (백엔드 분산 효과와 gateway 자체 한계를 분리).
   gateway:
     build:
-      context: ./gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: gateway/Dockerfile
     container_name: commerce-gateway-test
     environment:
       SPRING_PROFILES_ACTIVE: test
