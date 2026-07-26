@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zerobase.orderApi.exception.CustomException;
 import com.zerobase.orderApi.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +28,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+// [control/no-defense] ① 멱등 게이트 제거 — IdempotencyService.execute() 가 게이트/캐시 없이
+// action 을 바로 실행하므로 이 클래스의 7개 테스트는 모두 통과할 수 없다.
+// 방어가 있는 arm(main·feature)에서는 그대로 살아 있다.
+@Disabled("[control/no-defense] ① 멱등 게이트가 제거된 arm — 검증 대상 자체가 없음")
 @ExtendWith(MockitoExtension.class)
 class IdempotencyServiceTest {
 

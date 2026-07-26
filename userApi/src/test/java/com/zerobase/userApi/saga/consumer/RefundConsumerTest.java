@@ -8,6 +8,7 @@ import com.zerobase.userApi.saga.SagaTopics;
 import com.zerobase.userApi.saga.event.SagaEvents;
 import com.zerobase.userApi.service.customer.CustomerBalanceHistoryService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +25,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 
+// [control/no-defense] ③ 재고 실패→환불 보상 제거 — RefundConsumer 가 이벤트만 소비하고
+// 환불·PaymentReverted 발행을 하지 않으므로 이 클래스는 통과할 수 없다.
+// 방어가 있는 arm(main·feature)에서는 그대로 살아 있다.
+@Disabled("[control/no-defense] ③ 환불 보상이 제거된 arm — 검증 대상 자체가 없음")
 @ExtendWith(MockitoExtension.class)
 class RefundConsumerTest {
 

@@ -6,6 +6,7 @@ import com.zerobase.orderApi.exception.ErrorCode;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -25,6 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// [control/no-defense] ① 멱등 게이트 제거 — 같은 키를 재전송해도 action 이 매번 실행되므로
+// "한 번만 실행" / "나머지는 409·캐시 응답" 을 검증하는 이 클래스는 통과할 수 없다.
+// 방어가 있는 arm(main·feature)에서는 그대로 살아 있다.
+@Disabled("[control/no-defense] ① 멱등 게이트가 제거된 arm — 검증 대상 자체가 없음")
 class IdempotencyServiceIntegrationTest {
 
     private static RedisServer redisServer;

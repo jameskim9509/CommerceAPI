@@ -1,5 +1,6 @@
 package com.zerobase.userApi.saga;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +23,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+// [control/no-defense] ⑤ processed_events dedup 제거 — handle() 이 중복 여부를 보지 않고
+// 매번 재처리하며 ProcessedEvent 도 저장하지 않는다. 낙관적 락 재시도 테스트도 ④ @Version
+// 제거로 성립하지 않는다. 방어가 있는 arm(main·feature)에서는 그대로 살아 있다.
+@Disabled("[control/no-defense] ⑤ dedup·④ 낙관적 락이 제거된 arm — 검증 대상 자체가 없음")
 @ExtendWith(MockitoExtension.class)
 class IdempotentEventHandlerTest {
 

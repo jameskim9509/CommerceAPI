@@ -1,5 +1,6 @@
 package com.zerobase.orderApi.saga;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +27,8 @@ class IdempotentEventHandlerTest {
     @InjectMocks
     private IdempotentEventHandler handler;
 
+    // [control/no-defense] ⑤ processed_events dedup 제거 — 중복 여부를 보지 않고 매번 재처리한다.
+    @Disabled("[control/no-defense] ⑤ dedup 이 제거된 arm — 검증 대상 자체가 없음")
     @Test
     @DisplayName("이미 처리된 이벤트는 processor 호출 없이 skip")
     void skips_when_already_processed() {
@@ -39,6 +42,8 @@ class IdempotentEventHandlerTest {
         verify(repository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
+    // [control/no-defense] ⑤ processed_events dedup 제거 — ProcessedEvent 를 저장하지 않는다.
+    @Disabled("[control/no-defense] ⑤ dedup 이 제거된 arm — 검증 대상 자체가 없음")
     @Test
     @DisplayName("처음 보는 이벤트는 processor 실행 후 ProcessedEvent 저장")
     void processes_and_saves_when_new() {
