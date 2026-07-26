@@ -1,18 +1,10 @@
-# 루트 context (apps/web/Dockerfile 빌드용). 백엔드 모듈은 각자 ./userApi 등 별도 context 사용.
+# 루트 context 공용 — apps/web/Dockerfile 과 백엔드 4모듈(멀티스테이지) 모두 레포 루트를 build context 로 쓴다.
+# ★ 백엔드 빌드는 settings.gradle·gradlew·모듈 src 가 필요하므로 그것들을 여기서 제외하면 안 된다.
 
-# Java / Gradle backend (web 빌드 무관)
-userApi/
-orderApi/
-gateway/
-Auth/
-eurekaServer/
+# 빌드 산출물·캐시 (컨테이너 안에서 새로 생성)
 **/build/
 **/.gradle/
-gradlew
-gradlew.bat
-gradle/
-
-# Node 산출물
+**/generated/
 **/node_modules/
 **/dist/
 **/.turbo/
@@ -26,7 +18,7 @@ gradle/
 CLAUDE.md
 HELP.md
 
-# Docs / Infra / Test (web 빌드 무관)
+# Docs / Infra / Test (이미지 빌드 무관)
 ADR/
 README.md
 qa/

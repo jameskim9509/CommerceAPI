@@ -61,29 +61,22 @@ jobs:
   
           run: |
             chmod +x ./gradlew
+            export DOCKER_BUILDKIT=1        # RUN --mount=type=cache (gradle 캐시) 사용
+            # 테스트는 호스트에서 게이트로 실행 (이미지 빌드는 멀티스테이지가 -x test 로 bootJar)
             ./gradlew test -Dspring.redis.host=redis -Dspring.redis.port=6379
-            ./gradlew clean build -x test
 
-            cd ./gateway
-            docker build -t $ECR_REGISTRY/commerce-gateway:latest .
-            echo "image created. image=$ECR_REGISTRY/commerce-gateway:latest"
+            # 멀티스테이지 Dockerfile 이 컨테이너 안에서 bootJar 를 만든다 → build context 는 레포 루트(.)
+            docker build -f gateway/Dockerfile -t $ECR_REGISTRY/commerce-gateway:latest .
             docker push $ECR_REGISTRY/commerce-gateway:latest
-            echo "image pushed. image=$ECR_REGISTRY/commerce-gateway:latest"
-            cd ..
+            echo "pushed $ECR_REGISTRY/commerce-gateway:latest"
 
-            cd ./userApi
-            docker build -t $ECR_REGISTRY/commerce-userapi:latest .
-            echo "image created. image=$ECR_REGISTRY/commerce-userapi:latest"
+            docker build -f userApi/Dockerfile -t $ECR_REGISTRY/commerce-userapi:latest .
             docker push $ECR_REGISTRY/commerce-userapi:latest
-            echo "image pushed. image=$ECR_REGISTRY/commerce-userapi:latest"
-            cd ..
+            echo "pushed $ECR_REGISTRY/commerce-userapi:latest"
 
-            cd ./orderApi
-            docker build -t $ECR_REGISTRY/commerce-orderapi:latest .
-            echo "image created. image=$ECR_REGISTRY/commerce-orderapi:latest"
+            docker build -f orderApi/Dockerfile -t $ECR_REGISTRY/commerce-orderapi:latest .
             docker push $ECR_REGISTRY/commerce-orderapi:latest
-            echo "image pushed. image=$ECR_REGISTRY/commerce-orderapi:latest"
-            cd ..
+            echo "pushed $ECR_REGISTRY/commerce-orderapi:latest"
   
         - name: pull image on user API EC2
           env: 

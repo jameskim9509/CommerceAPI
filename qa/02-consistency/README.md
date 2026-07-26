@@ -33,12 +33,11 @@
 
 ```
 qa/02-consistency/
-├── docker-compose.qa.yml        QA용 스택 (orderapi ×ORDERAPI_REPLICAS, kafka 4파티션)
-├── build-images.sh              현재 브랜치 소스로 이미지 빌드
-├── chaos-schedule.sh            주변 장애 주입 (부하와 동시에 백그라운드 실행)
-├── quiescence-gate.sh           정착 대기 (비동기 흐름 종료 확인)
-├── verify-consistency.sh        정합성 검증 (run 1건 판정)
-├── aggregate-runs.sh            run 결과 집계 (원값·중앙값·범위)
+├── docker-compose.qa.yml        QA용 스택
+├── chaos-schedule.sh            주변 장애 주입
+├── quiescence-gate.sh           비동기 흐름 종료 대기
+├── verify-consistency.sh        정합성 검증
+├── aggregate-runs.sh            run 결과 집계
 ├── k6/load-test-consistency.js  통합 시나리오 스크립트
 ├── seed/                        시드 데이터
 │   ├── user.sql
@@ -49,20 +48,21 @@ qa/02-consistency/
 ## 사전 요구사항
 
 - RAM 8GB / 8CPU 여유공간
-- 빌드된 jar 파일
+- (jar 빌드 불필요 — 멀티스테이지 이미지 빌드가 컨테이너 안에서 생성)
 - WSL2 또는 Bash
 - Docker (compose 환경)
 
-## 실행 — 수동 측정
+## 실행
 
-방어 상태는 **체크아웃한 브랜치**가 결정한다 (control 오버레이·이미지·토글 없음).
-무방어 브랜치와 방어 브랜치에서 **같은 절차를 그대로** 돌려 두 측정을 얻는다.
+**무방어 브랜치**와 **방어 브랜치**에서 같은 절차를 그대로 돌려 두 측정을 얻는다.
 
 ```bash
-# ── arm 선택: control(무방어) 은 v1, treatment(방어) 는 방어 브랜치 ──
-git checkout v1                                  # treatment: feature/66-consistency-integration-scenario
+git checkout v1                                  # 방어 브랜치: feature/66-consistency-integration-scenario
 cd qa/02-consistency
-./build-images.sh                                # 브랜치를 바꿨으면 반드시 재빌드
+
+# 이미지 재빌드 — 멀티스테이지 Dockerfile 이 컨테이너 안에서 bootJar 까지 만든다 (호스트 gradle 불필요).
+#   최초만 의존성 다운로드로 느리고, 이후 브랜치 전환 재빌드는 gradle 캐시(--mount)로 빠르다.
+docker compose -f docker-compose.qa.yml build
 ```
 
 한 run 은 아래 1)~8) 이다. 라벨만 바꿔가며 반복한다 (control `C-run1`, `C-run2` … / treatment `T-run1` …).
@@ -96,41 +96,41 @@ exit
 
 # 7) 카오스 종료 → 정착 대기 → 검증
 kill $CHAOS_PID 2>/dev/null                             # 미도달 앵커는 생략
-bash quiescence-gate.sh                                 # outbox·PENDING/PAID·consumer lag 이 멎을 때까지
+bash quiescence-gate.sh                                 # 비동기 흐름 종료 대기
 RUN_LABEL=$LABEL bash verify-consistency.sh             # → results/$LABEL-verify.txt
 
 # 8) 정리 후 다음 run 으로
-docker compose -f docker-compose.qa.yml down -v --remove-orphans
+docker compose -f docker-compose.qa.yml down -v
 ```
 
-**스모크 (브랜치를 바꿀 때마다 1회)** — 변형 버그가 위반으로 오계수되지 않게, 카오스 없는 작은
-clean 부하로 먼저 잔여 0 을 확인한다. 1)~3)·5)~8) 은 그대로 두고 **4)(카오스) 만 생략**한 뒤
-라벨·부하 파라미터를 줄인다:
+**통합 시나리오 실행전 스모크 테스트** — 빌드/세팅 정상동작 확인
+
+results/$LABEL-verify.txt의 N값이 0임을 확인
 
 ```bash
-LABEL=C-smoke                   # treatment 는 T-smoke
-# 4) 실행하지 않음 (= 무카오스 baseline)
-# 5) 는 파라미터만 축소:
+LABEL=C-smoke                   # 방어버전은 T-smoke
 RUN_LABEL=$LABEL ORDER_TARGET=2000 ARRIVAL_RATE=50 \
     docker compose -f docker-compose.qa.yml run --rm --entrypoint sh k6
-# 7) kill 은 생략, quiescence-gate → verify-consistency 는 동일 → results/$LABEL-verify.txt 가 N=0 이어야 한다
+k6 run /scripts/load-test-consistency.js
+exit
+bash quiescence-gate.sh                      
+RUN_LABEL=$LABEL bash verify-consistency.sh
 ```
 
-**반복·집계** — 점추정 금지(ADR-008 §재현 하네스 4, 권장 ≥10회). arm 마다 run 을 쌓은 뒤 한 번 집계한다.
+**반복된 결과 집계**
 
 ```bash
 ./aggregate-runs.sh C           # → results/C-AGGREGATE.md (원값·중앙값·범위)
 ./aggregate-runs.sh T           # 방어 브랜치에서
 ```
 
+> 반복적으로 시나리오를 돌림으로써 현재 컴퓨터의 상태별 예외 상황에 대한 오차를 줄임
+
 **비교 (KPI: N → r)** — 두 AGGREGATE 의 중앙값을 비교한다. run 1건끼리 보려면:
 
 ```bash
 diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p' results/T-run1-verify.txt)
 ```
-
-> **`ORDERAPI_REPLICAS` 는 세션 내내 유지** — 새 셸에서 k6 스텝만 다시 돌리면 변수가 없어도 기본 4 로
-> 뜨지만, 다른 값으로 측정 중이었다면 조용히 4 로 되돌아간다.
 
 ## 통합 시나리오 구성 (기본 10만 건)
 

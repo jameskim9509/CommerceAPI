@@ -6,7 +6,7 @@
 #   - kafka KAFKA_CFG_NUM_PARTITIONS: 4 → orderApi 4인스턴스 × 4파티션 병렬 소비로 ② 재고·④ 잔액 @Version 경합 발화
 #   - redis / kafka 볼륨 없음(ephemeral) → 주변 장애 T3(멱등키 유실)·T4(kafka 로그 전소) 카오스 주입 대상
 #
-# control(무방어) 실행은 무방어 브랜치(control/no-defense, tag v1) 체크아웃 + build-images.sh 로 한다 (방어 5종 OFF; 오버레이 없음).
+# control(무방어) 실행은 무방어 브랜치(control/no-defense, tag v1) 체크아웃 후 재빌드(gradle bootJar → compose build)로 한다 (방어 5종 OFF; 오버레이 없음).
 #
 # 사용 (상세 절차는 README §실행 — 수동 측정):
 #   export ORDERAPI_REPLICAS=4                                          # deploy.replicas 로 주입 (기본 4)
@@ -93,8 +93,8 @@ services:
 
   eureka:
     build:
-      context: ../../eurekaServer
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: eurekaServer/Dockerfile
     ports:
       - "8761:8761"
     healthcheck:
@@ -112,8 +112,8 @@ services:
 
   userapi:
     build:
-      context: ../../userApi
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: userApi/Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
       MYSQL_HOST: mysql-user
@@ -141,8 +141,8 @@ services:
   # 정합성 경합의 주 무대. deploy.replicas=${ORDERAPI_REPLICAS:-4} 로 4인스턴스 기동 (× 4파티션).
   orderapi:
     build:
-      context: ../../orderApi
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: orderApi/Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
       MYSQL_HOST: mysql-order
@@ -171,8 +171,8 @@ services:
 
   gateway:
     build:
-      context: ../../gateway
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: gateway/Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
