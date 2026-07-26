@@ -78,7 +78,7 @@ docker compose -f docker-compose.qa.yml up -d \
 
 # 시드 + 레지스트리 전파 대기
 docker compose -f docker-compose.qa.yml wait db-seed
-sleep 60                                             
+sleep 60                                           
 
 # 카오스 없이 작은 부하만
 RUN_LABEL=$LABEL ORDER_TARGET=2000 ARRIVAL_RATE=50 \
@@ -104,7 +104,7 @@ docker compose -f docker-compose.qa.yml down -v
 4. 시나리오 실행 1)~8). (라벨만 바꿔가며 반복 - 무방어 `C-run1`, `C-run2` … / 방어 `T-run1` …).
 
 ```bash
-LABEL=C-run1        
+LABEL=C-run1      
 export ORDERAPI_REPLICAS=4      # compose deploy.replicas 로 주입
 
 # 1) 이전 잔재 정리
@@ -116,11 +116,11 @@ docker compose -f docker-compose.qa.yml up -d \
 
 # 3) 시드 + 레지스트리 전파 대기
 docker compose -f docker-compose.qa.yml wait db-seed
-sleep 60                                             
+sleep 60                                           
 
 # 4) 주변 장애 주입 스케줄 실행
 ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
-CHAOS_PID=$!                                  
+CHAOS_PID=$!                                
 
 # 5) k6 셸 진입
 RUN_LABEL=$LABEL ORDER_TARGET=100000 ARRIVAL_RATE=200 \
@@ -131,7 +131,7 @@ k6 run /scripts/load-test-consistency.js
 exit
 
 # 7) 카오스 종료 → 비동기 흐름 종료 대기 → 검증
-kill $CHAOS_PID 2>/dev/null                   
+kill $CHAOS_PID 2>/dev/null                 
 bash quiescence-gate.sh                                 # 비동기 흐름 종료 대기
 RUN_LABEL=$LABEL bash verify-consistency.sh             # 판정 결과 확인
 
