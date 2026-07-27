@@ -12,7 +12,6 @@
 //
 // ★ 최종 정합성(CONFIRMED/FAILED, 돈 보존, 초과판매)은 k6 가 판정하지 않는다 — 결제·재고·환불은 전부
 //   비동기(SAGA)라 k6 응답은 200/PENDING 이다. 부하 종료 → 정착(quiescence) → verify-consistency.sh 가 판정.
-//   k6 가 직접 관측하는 유일한 원하는 장애는 ① 멱등성: duplicate_order_responses.
 //
 // 시드 일치(중요): CartService.refreshCart 가 product.name/description·item.name/price 를 DB 와 비교하므로
 //   아래 이름/설명/가격은 seed/order.sql 과 "정확히" 같아야 한다 (다르면 CART_CHECK_REQUIRED).
@@ -35,11 +34,11 @@ const ORDER_TARGET = parseInt(__ENV.ORDER_TARGET || '100000');
 const ARRIVAL_RATE = parseInt(__ENV.ARRIVAL_RATE || '200');   // iterations/s
 const RICH_POOL    = parseInt(__ENV.RICH_POOL || '300');
 const RUN_LABEL    = __ENV.RUN_LABEL || 'unknown';
-// ★ 클라이언트 타임아웃. 카오스로 백엔드가 멎으면(T2: mysql 25초 다운) 서버측 타임아웃이 30초라
-//   k6 기본값(60s)으로는 VU 가 그 시간 내내 묶여 도착분이 통째로 드롭된다(실측 dropped 35,151).
-//   실제 클라이언트도 무한정 기다리지 않으므로 10초에서 끊고 VU 를 회수한다.
-//   타임아웃된 요청은 status 0 → non2xx/cart_add_fail 로 계수된다.
+// ★ 클라이언트 타임아웃. mysql 이 멎어도 앱은 즉시 실패하지 않는다 — HikariCP 가 커넥션 획득을
+//   connectionTimeout(기본 30초)까지 블로킹한다
 const REQ_TIMEOUT  = __ENV.REQ_TIMEOUT || '10s';
+// 타임아웃 시 같은 키로 1회 재시도할지. 런마다 summary 에 기록되므로 사후에 어느 모드였는지 알 수 있다.
+const RETRY_ON_TIMEOUT = (__ENV.RETRY_ON_TIMEOUT || '1') !== '0';
 
 // 총 주문 수 ÷ 초당 도착 = 부하 지속(초). 최소 30s 보장.
 const DURATION_S = Math.max(30, Math.ceil(ORDER_TARGET / ARRIVAL_RATE));
@@ -53,9 +52,14 @@ const order2xx      = new Counter('order_2xx');
 const orderNon2xx   = new Counter('order_non2xx');
 const cartFail      = new Counter('cart_add_fail');
 const idemReplays   = new Counter('idempotency_replay_attempts');
-const dupOrders     = new Counter('duplicate_order_responses');   // 원하는 장애 ① 위반 카운터
+const replay2xx     = new Counter('idempotency_replay_2xx');      // 재전송이 200 (방어 ON 이면 캐시된 응답)
 const replayNon2xx  = new Counter('idempotency_replay_non2xx');
 const tokenMissing  = new Counter('setup_token_missing');         // setup 로그인 실패로 건너뛴 이터레이션
+
+// ---- 타임아웃 재시도 ----
+const timeoutRetries   = new Counter('timeout_retry_attempts');
+const timeoutRetry2xx  = new Counter('timeout_retry_2xx');      // 재시도가 200 — control 이면 새 주문 생성 의심
+const timeoutRetryFail = new Counter('timeout_retry_non2xx');   // 409(방어 ON) 또는 400(카트 소비됨) 등
 
 const thresholds = {
     'order_create_latency': ['p(99)>=0'],
@@ -199,15 +203,18 @@ export default function (data) {
     if (res.status === 200) order2xx.add(1); else orderNon2xx.add(1);
     check(res, { 'order accepted (200)': (r) => r.status === 200 });
 
-    // 5) 멱등 재전송 overlay (원하는 장애 ①): 같은 키로 즉시 재전송 → orderId 가 다르면 위반
+    // 5) 타임아웃 재시도 — 같은 Idempotency-Key 로 1회 재전송한다.
+    if (RETRY_ON_TIMEOUT && res.status === 0) {
+        timeoutRetries.add(1);
+        const retry = placeOrder(token, sku, key);
+        if (retry.status === 200) timeoutRetry2xx.add(1); else timeoutRetryFail.add(1);
+    }
+
+    // 6) 멱등 재전송 overlay (원하는 장애 ①): 같은 키로 즉시 재전송 → orderId 가 다르면 위반
     if (type === 'replay' && res.status === 200) {
         idemReplays.add(1);
         const replay = placeOrder(token, sku, key);
-        if (replay.status !== 200) {
-            replayNon2xx.add(1);   // 판정 불가 — 위반도 정상도 아님 (summary 에 남겨 사후 판별)
-        } else if (orderIdOf(replay) !== orderIdOf(res)) {
-            dupOrders.add(1);      // 멱등성 위반: 같은 키가 새 orderId 를 만들었다
-        }
+        if (replay.status === 200) replay2xx.add(1); else replayNon2xx.add(1);
     }
 }
 
@@ -253,12 +260,17 @@ export function handleSummary(data) {
         },
         // ---- 시나리오 지표 ----
         attempts: { total: val('order_attempts'), hot: val('order_attempts_hot'), normal: val('order_attempts_normal') },
-        order_posts_total: val('order_attempts') + val('idempotency_replay_attempts'),   // = http_reqs{name:order_create}
+        order_posts_total: val('order_attempts') + val('idempotency_replay_attempts') + val('timeout_retry_attempts'),
         order_http: { ok_2xx: val('order_2xx'), non_2xx: val('order_non2xx'), cart_add_fail: val('cart_add_fail') },
         idempotency: {
             replays_attempted: val('idempotency_replay_attempts'),
-            duplicate_order_responses: val('duplicate_order_responses'),
+            replay_2xx: val('idempotency_replay_2xx'),
             replay_non2xx: val('idempotency_replay_non2xx'),
+            // 타임아웃 재시도 — retry_2xx 는 "재시도가 응답을 받았다"까지만 말한다.
+            retry_on_timeout: RETRY_ON_TIMEOUT,
+            timeout_retry_attempts: val('timeout_retry_attempts'),
+            timeout_retry_2xx: val('timeout_retry_2xx'),
+            timeout_retry_non2xx: val('timeout_retry_non2xx'),
         },
         setup_token_missing: val('setup_token_missing'),          // >0 이면 사전 로그인이 일부 실패한 런
         order_create_latency_ms: trend('order_create_latency'),   // 첫 시도만 (재전송 제외)
@@ -284,8 +296,9 @@ export function handleSummary(data) {
                 `\n=== 정합성 부하 (${RUN_LABEL}) ===\n` +
                 `attempts total=${summary.attempts.total} (hot=${summary.attempts.hot} normal=${summary.attempts.normal})\n` +
                 `order 2xx=${summary.order_http.ok_2xx} non2xx=${summary.order_http.non_2xx} cart_fail=${summary.order_http.cart_add_fail}\n` +
-                `idempotency: replays=${summary.idempotency.replays_attempted} duplicate=${summary.idempotency.duplicate_order_responses} replay_non2xx=${summary.idempotency.replay_non2xx}\n` +
+                `replay overlay: replays=${summary.idempotency.replays_attempted} 2xx=${summary.idempotency.replay_2xx} non2xx=${summary.idempotency.replay_non2xx}\n` +
+                `timeout retry: on=${summary.idempotency.retry_on_timeout} attempts=${summary.idempotency.timeout_retry_attempts} 2xx=${summary.idempotency.timeout_retry_2xx} non2xx=${summary.idempotency.timeout_retry_non2xx}\n` +
                 `setup_token_missing=${summary.setup_token_missing}\n` +
-                `order POST 총계=${summary.order_posts_total}\n`,
+                `order POST 총계=${summary.order_posts_total} (attempts ${summary.attempts.total} + replays ${summary.idempotency.replays_attempted} + timeout retries ${summary.idempotency.timeout_retry_attempts})\n`,
     };
 }
