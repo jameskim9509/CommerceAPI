@@ -31,6 +31,10 @@ public class Order extends BaseEntity {
     @Column(length = 500)
     private String failureReason;
 
+    /** 진입 멱등키(계측용). UNIQUE 아님 — 제약을 걸면 DB 가 중복을 막아 control arm 이 오염된다. */
+    @Column(length = 64)
+    private String idempotencyKey;
+
     // 양방향 매핑: OrderItem 측 @ManyToOne 이 order_id 를 관리한다.
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default

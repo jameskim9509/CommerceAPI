@@ -155,7 +155,7 @@ class CustomerCartControllerTest {
                 .build();
         OrderDto orderDto = OrderDto.from(order);
 
-        given(orderService.order(anyLong(), anyString(), any())).willReturn(orderDto);
+        given(orderService.order(anyLong(), anyString(), any(), any())).willReturn(orderDto);
         given(idempotencyService.execute(any(), any()))
                 .willAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
 

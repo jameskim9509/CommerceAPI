@@ -79,7 +79,8 @@ public class CustomerCartController {
                 orderService.order(
                         userDetails.getId(),
                         userDetails.getUsername(),
-                        cart
+                        cart,
+                        idempotencyKey
                 )
         ));
     }

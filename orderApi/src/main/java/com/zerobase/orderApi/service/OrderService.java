@@ -33,7 +33,7 @@ public class OrderService {
     private final SagaEventPublisher publisher;
 
     @Transactional
-    public OrderDto order(Long customerId, String username, Cart orderCart) {
+    public OrderDto order(Long customerId, String username, Cart orderCart, String idempotencyKey) {
         Cart curCart = redisClientService.get(customerId, Cart.class);
         if (curCart == null) throw new CustomException(ErrorCode.CART_NOT_EXIST);
         Cart cloneCurCart = curCart.clone();
@@ -55,6 +55,7 @@ public class OrderService {
                     .username(username)
                     .status(OrderStatus.PENDING)
                     .totalPrice(totalPrice)
+                    .idempotencyKey(idempotencyKey)   // 계측용 — 같은 키로 몇 건이 생겼는지 사후 계수
                     .build();
             // 양방향 매핑: 각 OrderItem 에 order 역참조 세팅 (NOT NULL FK 보장)
             buildOrderItems(orderCart).forEach(order::addItem);
