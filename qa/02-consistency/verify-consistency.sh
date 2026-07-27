@@ -3,7 +3,8 @@
 # ADR-008 §검증 — 교차 DB 3대 불변식 / 9개 체크 (정착 후 최종 DB 상태로 판정)
 #
 # 런 스코프는 시드 명명 규칙: orders.username LIKE 'ctrich%', customer.email 동일.
-# ① 멱등성 위반은 SQL 에 안 잡히므로 k6 summary 의 duplicate_order_responses 를 함께 집계(ADR-008 §측정).
+# ① 멱등성 위반은 "생성된 주문 − 의도한 주문(k6 order_attempts)" 로 센다 — k6 는 타임아웃 재시도의
+#   중복을 볼 수 없기 때문(양쪽 응답 모두 status 0). 실패분이 상쇄하므로 하한값이다.
 #
 # 출력: 9개 체크의 위반 수(행/단위/원) + 총수 N(집계 KPI) + 돈 보존 누수(원). results/<RUN_LABEL>-verify.txt.
 #   PASS/FAIL 로 합·불을 찍지 않는다 — 값 그대로 보고하고, arm 간 비교(N(control) → r(treatment))는
@@ -34,13 +35,14 @@ q_user()  { docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot
 n() { case "$1" in ''|*[!0-9-]*) echo 0 ;; *) echo "$1" ;; esac; }
 absn() { local v="$1"; [ "$v" -lt 0 ] && echo $(( -v )) || echo "$v"; }
 
-# ---- ① 멱등성 위반 (k6 summary) ----
+# ---- ① 멱등성 위반 (DB 대조) ----
 K6="$RESULTS_DIR/${RUN_LABEL}-k6-summary.json"
+orders_made=$(n "$(q_order "SELECT COUNT(*) FROM orders WHERE ($SCOPE_O);")")
 if [ -f "$K6" ]; then
-    v1=$(grep -oE '"duplicate_order_responses"[[:space:]]*:[[:space:]]*[0-9]+' "$K6" | grep -oE '[0-9]+$' | head -1)
-    v1=$(n "$v1")
+    intended=$(n "$(grep -oE '"total"[[:space:]]*:[[:space:]]*[0-9]+' "$K6" | grep -oE '[0-9]+$' | head -1)")
+    v1=$(( orders_made > intended ? orders_made - intended : 0 ))
 else
-    v1="n/a"
+    intended="n/a"; v1="n/a"
 fi
 
 # ---- ② 초과판매 (product_item.count 델타) ----
@@ -81,8 +83,8 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "scope: ctrich | rich=$rich_cnt | hot id=$HOT_ID init=$HOT_INIT now=$hot_now version=$hot_version"
     echo "status 분포: $status_dist"
     echo ""
-    u1=$([ "$v1" = "n/a" ] && echo "  (k6 summary 없음)" || echo " 건")
-    echo "① 멱등성 위반 (duplicate_order_responses)      : $(num "$v1")$u1"
+    u1=$([ "$v1" = "n/a" ] && echo "  (k6 summary 없음)" || echo " 건  (생성 $orders_made − 의도 $intended, 하한)")
+    echo "① 중복 주문 (생성 − 의도)                     : $(num "$v1")$u1"
     echo "② 초과판매"
     echo "   v2a 음수 재고 행                            : $(num "$v2a") 행"
     echo "   v2b |차감량 − CONFIRMED수량|                : $(num "$v2b") 개  (차감량 $stock_delta = init $HOT_INIT − now $hot_now, CONFIRMED $confirmed_hot_qty)"
