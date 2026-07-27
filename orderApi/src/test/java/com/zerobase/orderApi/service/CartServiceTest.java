@@ -404,7 +404,7 @@ public class CartServiceTest {
         ArgumentCaptor<Order> orderArgumentCaptor = ArgumentCaptor.forClass(Order.class);
 
         // when
-        orderService.order(1L, "james@naver.com", orderCart);
+        orderService.order(1L, "james@naver.com", orderCart, "test-idem-key");
 
         // then - 장바구니에서 주문 아이템만큼 차감, 남는 아이템 유지
         verify(redisClientService, times(2)).put(anyLong(), cartArgumentCaptor.capture());

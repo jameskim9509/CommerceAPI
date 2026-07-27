@@ -3,8 +3,8 @@
 # ADR-008 §검증 — 교차 DB 3대 불변식 / 9개 체크 (정착 후 최종 DB 상태로 판정)
 #
 # 런 스코프는 시드 명명 규칙: orders.username LIKE 'ctrich%', customer.email 동일.
-# ① 멱등성 위반은 "생성된 주문 − 의도한 주문(k6 order_attempts)" 로 센다 — k6 는 타임아웃 재시도의
-#   중복을 볼 수 없기 때문(양쪽 응답 모두 status 0). 실패분이 상쇄하므로 하한값이다.
+# ① 멱등성 위반은 orders.idempotency_key(V6, UNIQUE 아님) 단위로 정확히 센다 — 같은 키로 2건 이상
+#   만들어졌으면 초과분이 위반이다. k6 는 판정 불가(타임아웃 재시도는 양쪽 응답이 status 0).
 #
 # 출력: 9개 체크의 위반 수(행/단위/원) + 총수 N(집계 KPI) + 돈 보존 누수(원). results/<RUN_LABEL>-verify.txt.
 #   PASS/FAIL 로 합·불을 찍지 않는다 — 값 그대로 보고하고, arm 간 비교(N(control) → r(treatment))는
@@ -35,14 +35,19 @@ q_user()  { docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot
 n() { case "$1" in ''|*[!0-9-]*) echo 0 ;; *) echo "$1" ;; esac; }
 absn() { local v="$1"; [ "$v" -lt 0 ] && echo $(( -v )) || echo "$v"; }
 
-# ---- ① 멱등성 위반 (DB 대조) ----
+# ---- ① 멱등성 위반 (멱등키 단위 정확 계수) ----
+# 같은 Idempotency-Key 로 만들어진 주문이 2건 이상이면 초과분이 곧 위반이다(V6 컬럼).
+#   컬럼은 UNIQUE 가 아니다 — 제약을 걸면 DB 가 중복을 막아 control arm 이 오염된다(계측 전용).
+# 보조로 "생성 − 의도" 차분도 남긴다. 실패분이 상쇄해 하한이 되지만 총량 감각을 준다.
 K6="$RESULTS_DIR/${RUN_LABEL}-k6-summary.json"
 orders_made=$(n "$(q_order "SELECT COUNT(*) FROM orders WHERE ($SCOPE_O);")")
+v1=$(n "$(q_order "SELECT COALESCE(SUM(c-1),0) FROM (SELECT COUNT(*) c FROM orders WHERE idempotency_key IS NOT NULL AND ($SCOPE_O) GROUP BY idempotency_key HAVING COUNT(*) > 1) t;")")
+dup_keys=$(n "$(q_order "SELECT COUNT(*) FROM (SELECT idempotency_key FROM orders WHERE idempotency_key IS NOT NULL AND ($SCOPE_O) GROUP BY idempotency_key HAVING COUNT(*) > 1) t;")")
 if [ -f "$K6" ]; then
     intended=$(n "$(grep -oE '"total"[[:space:]]*:[[:space:]]*[0-9]+' "$K6" | grep -oE '[0-9]+$' | head -1)")
-    v1=$(( orders_made > intended ? orders_made - intended : 0 ))
+    v1_delta=$(( orders_made > intended ? orders_made - intended : 0 ))
 else
-    intended="n/a"; v1="n/a"
+    intended="n/a"; v1_delta="n/a"
 fi
 
 # ---- ② 초과판매 (product_item.count 델타) ----
@@ -83,8 +88,8 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "scope: ctrich | rich=$rich_cnt | hot id=$HOT_ID init=$HOT_INIT now=$hot_now version=$hot_version"
     echo "status 분포: $status_dist"
     echo ""
-    u1=$([ "$v1" = "n/a" ] && echo "  (k6 summary 없음)" || echo " 건  (생성 $orders_made − 의도 $intended, 하한)")
-    echo "① 중복 주문 (생성 − 의도)                     : $(num "$v1")$u1"
+    echo "① 중복 주문 (같은 멱등키로 2건 이상)          : $(num "$v1") 건  (중복 키 $dup_keys 개, 생성 $orders_made)"
+    echo "   └ 참고: 생성 − 의도 차분(하한)              : $(num "$v1_delta") 건  (의도 $intended)"
     echo "② 초과판매"
     echo "   v2a 음수 재고 행                            : $(num "$v2a") 행"
     echo "   v2b |차감량 − CONFIRMED수량|                : $(num "$v2b") 개  (차감량 $stock_delta = init $HOT_INIT − now $hot_now, CONFIRMED $confirmed_hot_qty)"
