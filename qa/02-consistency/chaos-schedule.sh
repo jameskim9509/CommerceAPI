@@ -2,10 +2,11 @@
 # =============================================================================
 # ADR-008 §재현 하네스 2 — 부하 진행도에 앵커한 bounded 고정 카오스 스케줄
 #
-# 주변 장애 T1–T4 를 "부하 진행도(스코프 내 생성 주문 수 / ORDER_TARGET)"의 서로 다른 지점에 각기 한 번씩
-# 주입한다(bounded). control·treatment 양쪽에 바이트 동일하게 적용해야 잔여 r 이 공정하게 비교된다.
+# 주변 장애 T1–T4 를 "부하 진행도(이터레이션 진행률)"의 서로 다른 지점에 각기 한 번씩 주입한다(bounded).
+# 진행률은 drop==0 가정 하에 시간으로 환산한다 — 이터레이션 N 은 t = N ÷ ARRIVAL_RATE 에 출발하므로.
+# control·treatment 양쪽에 바이트 동일하게 적용해야 잔여 r 이 공정하게 비교된다.
 #
-#   진행도 20% → T2  대상 DB 다운:   mysql-order 를 T2_DOWN_S 초 stop 후 start (소비 중 재시도창 초과 → 이벤트 드롭)
+#   진행도 20% → T2  대상 DB 다운:   mysql-order 를 T2_DOWN_S 초 stop 후 start
 #   진행도 40% → T3  멱등키 유실:     redis FLUSHALL (idem:order:* 소실 → 같은 키 재전송이 새 주문 이중 생성)
 #   진행도 60% → T1  부분 크래시:     orderapi 인스턴스 1개 kill 후 T1_DOWN_S 초 뒤 start (reserveStock↔marker 비원자 창에서 크래시)
 #   진행도 80% → T4  kafka 로그 전소: stop orderapi → rm -sf kafka → up -d kafka → start orderapi (볼륨 없어 -v 불필요)
@@ -16,8 +17,9 @@
 # 사용: 수동 측정 절차(README §실행)에서 k6 부하 직전에 백그라운드로 띄운다.
 #   ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
 #   CHAOS_PID=$!        # k6 종료 후 kill $CHAOS_PID
-# 환경변수: COMPOSE_ARGS(기본 -f docker-compose.qa.yml) POLL(기본 3) T2_DOWN_S(기본 25) T1_DOWN_S(기본 25)
+# 환경변수: COMPOSE_ARGS(기본 -f docker-compose.qa.yml) POLL(기본 3) T2_DOWN_S(기본 10) T1_DOWN_S(기본 25)
 #           HARD_TIMEOUT(기본 부하추정+정착)
+#           ARRIVAL_RATE(기본 200) — 앵커 시각 환산에 쓴다. k6 에 준 값과 반드시 같아야 한다.
 # =============================================================================
 set -uo pipefail
 export MSYS_NO_PATHCONV=1
@@ -32,9 +34,9 @@ COMPOSE_ARGS="${COMPOSE_ARGS:--f docker-compose.qa.yml}"
 ORDER_TARGET="${ORDER_TARGET:-100000}"
 ARRIVAL_RATE="${ARRIVAL_RATE:-200}"
 POLL="${POLL:-3}"
-T2_DOWN_S="${T2_DOWN_S:-25}"
+T2_DOWN_S="${T2_DOWN_S:-10}"
 T1_DOWN_S="${T1_DOWN_S:-25}"
-# 종료 보증(A80 앵커에만 의존하지 않음): 측정자가 k6 종료 후 kill 하는 게 기본이고, 놓치더라도
+# 종료 보증(T4 앵커에만 의존하지 않음): 측정자가 k6 종료 후 kill 하는 게 기본이고, 놓치더라도
 # (1) 진행도 정체 감지(STALL_LIMIT) (2) 부하추정+정착 HARD_TIMEOUT 이 이중으로 종료를 보장.
 HARD_TIMEOUT="${HARD_TIMEOUT:-$(( ORDER_TARGET / ARRIVAL_RATE + 300 ))}"
 STALL_LIMIT="${STALL_LIMIT:-40}"     # 진행도 무변화 40*POLL(≈120s) → 남은 앵커 생략하고 종료
@@ -44,41 +46,60 @@ progress() {
     docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot -N -B orders \
         -e "SELECT COUNT(*) FROM orders WHERE ($SCOPE);" 2>/dev/null | tr -d '[:space:]'
 }
-pct() { echo $(( ORDER_TARGET * $1 / 100 )); }
+# ★ 앵커는 "이터레이션 진행도"로 잡고 시간으로 환산한다.
+#   drop==0 가정 하에 이터레이션 N 은 t = N ÷ ARRIVAL_RATE 에 출발하므로,
+#   진행도 P% 는 부하 시작 후 (P% × ORDER_TARGET ÷ ARRIVAL_RATE) 초에 해당한다.
+sec_at() { echo $(( ORDER_TARGET * $1 / 100 / ARRIVAL_RATE )); }
 now() { date +%s; }
 log() { echo "[chaos $(date -u +%H:%M:%S)] $*"; }
 
-A20=$(pct 20); A40=$(pct 40); A60=$(pct 60); A80=$(pct 80)
+S20=$(sec_at 20); S40=$(sec_at 40); S60=$(sec_at 60); S80=$(sec_at 80)
+
 did_t2=0; did_t3=0; did_t1=0; did_t4=0
 last_p=-1; stall=0
-start=$(now)
+boot=$(now)
 
-log "스케줄 앵커(주문 수): T2@$A20  T3@$A40  T1@$A60  T4@$A80  (target=$ORDER_TARGET, hard_timeout=${HARD_TIMEOUT}s)"
+log "스케줄 앵커(부하 시작 후 초): T2@${S20}s  T3@${S40}s  T1@${S60}s  T4@${S80}s"
+log "  = 이터레이션 진행도 20/40/60/80% (target=$ORDER_TARGET ÷ rate=$ARRIVAL_RATE, drop=0 가정), hard_timeout=${HARD_TIMEOUT}s"
+
+# 부하 시작(첫 주문) 대기 — 여기부터가 t=0. k6 setup 구간만큼의 오차를 없앤다.
+start=""
+while [ -z "$start" ] && [ $(( $(now) - boot )) -lt "$HARD_TIMEOUT" ]; do
+    p=$(progress); case "$p" in ''|*[!0-9]*) p=0 ;; esac
+    if [ "$p" -gt 0 ]; then
+        start=$(now)
+        log "부하 시작 감지 (주문 $p건) — 여기부터 t=0"
+    else
+        sleep "$POLL"
+    fi
+done
+[ -z "$start" ] && { log "⚠ 부하 시작을 감지하지 못함 — 종료"; exit 1; }
 
 while [ $(( $(now) - start )) -lt "$HARD_TIMEOUT" ]; do
     p=$(progress); case "$p" in ''|*[!0-9]*) p=0 ;; esac
+    t=$(( $(now) - start ))
 
-    if [ "$did_t2" = 0 ] && [ "$p" -ge "$A20" ]; then
+    if [ "$did_t2" = 0 ] && [ "$t" -ge "$S20" ]; then
         did_t2=1
-        log "T2 주입 — mysql-order ${T2_DOWN_S}s 다운 (진행도 $p)"
+        log "T2 주입 — mysql-order ${T2_DOWN_S}s 다운 (t=${t}s, 진행도 $p건)"
         docker compose $COMPOSE_ARGS stop mysql-order >/dev/null 2>&1
         sleep "$T2_DOWN_S"
         docker compose $COMPOSE_ARGS start mysql-order >/dev/null 2>&1
         log "T2 완료 — mysql-order 복구"
     fi
 
-    if [ "$did_t3" = 0 ] && [ "$p" -ge "$A40" ]; then
+    if [ "$did_t3" = 0 ] && [ "$t" -ge "$S40" ]; then
         did_t3=1
-        log "T3 주입 — redis FLUSHALL (멱등키 유실, 진행도 $p)"
+        log "T3 주입 — redis FLUSHALL (멱등키 유실, t=${t}s, 진행도 $p건)"
         docker compose $COMPOSE_ARGS exec -T redis redis-cli FLUSHALL >/dev/null 2>&1
         log "T3 완료"
     fi
 
-    if [ "$did_t1" = 0 ] && [ "$p" -ge "$A60" ]; then
+    if [ "$did_t1" = 0 ] && [ "$t" -ge "$S60" ]; then
         did_t1=1
         cid=$(docker compose $COMPOSE_ARGS ps -q orderapi 2>/dev/null | head -1)
         if [ -n "$cid" ]; then
-            log "T1 주입 — orderapi 인스턴스 1개 kill ($cid, 진행도 $p)"
+            log "T1 주입 — orderapi 인스턴스 1개 kill ($cid, t=${t}s, 진행도 $p건)"
             docker kill "$cid" >/dev/null 2>&1
             # ★ T2·T4 와 같은 bounded 카오스: 크래시 후 되살린다(운영에선 오케스트레이터가 재기동).
             #   노리는 피해(reserveStock 커밋 ↔ 마커 커밋 사이 크래시 → PaymentDeducted 재배달 → 재실행)는
@@ -92,9 +113,9 @@ while [ $(( $(now) - start )) -lt "$HARD_TIMEOUT" ]; do
         fi
     fi
 
-    if [ "$did_t4" = 0 ] && [ "$p" -ge "$A80" ]; then
+    if [ "$did_t4" = 0 ] && [ "$t" -ge "$S80" ]; then
         did_t4=1
-        log "T4 주입 — kafka 로그 전소 재생성 (진행도 $p)"
+        log "T4 주입 — kafka 로그 전소 재생성 (t=${t}s, 진행도 $p건)"
         docker compose $COMPOSE_ARGS stop orderapi >/dev/null 2>&1
         docker compose $COMPOSE_ARGS rm -sf kafka  >/dev/null 2>&1
         docker compose $COMPOSE_ARGS up -d kafka    >/dev/null 2>&1
@@ -104,8 +125,7 @@ while [ $(( $(now) - start )) -lt "$HARD_TIMEOUT" ]; do
         break   # 마지막 앵커까지 주입 완료
     fi
 
-    # 진행도 정체(부하 종료/정지) 감지 — A80 앵커 미도달이어도 종료 (control/degraded arm 무한 대기 방지).
-    #   p=0(예: T2 로 mysql 다운 → 조회 불가)일 땐 정체로 세지 않는다.
+    # 진행도 정체(부하 종료/정지) 감지 — 남은 앵커가 있어도 종료 (control/degraded arm 무한 대기 방지).
     if [ "$p" -gt 0 ] && [ "$p" -le "$last_p" ]; then
         stall=$(( stall + 1 ))
     else
