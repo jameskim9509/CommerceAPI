@@ -125,13 +125,17 @@ services:
       MAIL_PASSWORD: dummy-password
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
-    ports:
-      - "8081:8080"
+    # ★ 호스트 포트 발행 없음 — replicas>1 이면 포트가 충돌한다. 접근은 gateway 경유(:8080).
     depends_on:
       mysql-user: { condition: service_healthy }
       kafka: { condition: service_healthy }
       eureka: { condition: service_healthy }
     deploy:
+      # ★ SAGA 결제 컨슈머가 파이프라인 상한이다: 1인스턴스면 order-created 4파티션이 전부
+      #   한 컨슈머에 배정돼 드레인이 ~29/s 에 묶이고(실측 lag 26k), 정착에 부하시간의 4배가 든다.
+      #   2인스턴스 → 파티션 2개씩. 잔액 경합(⑤)도 단일 JVM 스레드 경합이 아니라 인스턴스 간
+      #   경합이 되어 무방어 arm 의 lost update 가 실제 조건으로 발화한다.
+      replicas: ${USERAPI_REPLICAS:-2}
       resources:
         limits:
           cpus: '2'
