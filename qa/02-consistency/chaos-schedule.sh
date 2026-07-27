@@ -18,6 +18,7 @@
 #   ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
 #   CHAOS_PID=$!        # k6 종료 후 kill $CHAOS_PID
 # 환경변수: COMPOSE_ARGS(기본 -f docker-compose.qa.yml) POLL(기본 3) T2_DOWN_S(기본 10) T1_DOWN_S(기본 25)
+#           FAULTS(기본 T2,T3,T1,T4) — 주입할 폴트 선택. 잔여 r 의 개별 귀속용.
 #           HARD_TIMEOUT(기본 부하추정+정착)
 #           ARRIVAL_RATE(기본 200) — 앵커 시각 환산에 쓴다. k6 에 준 값과 반드시 같아야 한다.
 # =============================================================================
@@ -42,6 +43,12 @@ HARD_TIMEOUT="${HARD_TIMEOUT:-$(( ORDER_TARGET / ARRIVAL_RATE + 300 ))}"
 STALL_LIMIT="${STALL_LIMIT:-40}"     # 진행도 무변화 40*POLL(≈120s) → 남은 앵커 생략하고 종료
 SCOPE="username LIKE 'ctrich%'"
 
+# ★ 주입할 폴트 선택 — 잔여 r 의 개별 귀속을 위해 일부만 넣을 수 있다.
+#   예) FAULTS=T2,T3,T1  (T4 제외)   FAULTS=T4  (단독 주입)
+#   ADR 은 4종 전부를 bounded 로 넣는 것을 기본으로 하므로 기본값은 전체다.
+FAULTS="${FAULTS:-T2,T3,T1,T4}"
+enabled() { case ",$FAULTS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+
 progress() {
     docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot -N -B orders \
         -e "SELECT COUNT(*) FROM orders WHERE ($SCOPE);" 2>/dev/null | tr -d '[:space:]'
@@ -61,6 +68,7 @@ boot=$(now)
 
 log "스케줄 앵커(부하 시작 후 초): T2@${S20}s  T3@${S40}s  T1@${S60}s  T4@${S80}s"
 log "  = 이터레이션 진행도 20/40/60/80% (target=$ORDER_TARGET ÷ rate=$ARRIVAL_RATE, drop=0 가정), hard_timeout=${HARD_TIMEOUT}s"
+log "  주입 대상: $FAULTS"
 
 # 부하 시작(첫 주문) 대기 — 여기부터가 t=0. k6 setup 구간만큼의 오차를 없앤다.
 start=""
@@ -79,7 +87,7 @@ while [ $(( $(now) - start )) -lt "$HARD_TIMEOUT" ]; do
     p=$(progress); case "$p" in ''|*[!0-9]*) p=0 ;; esac
     t=$(( $(now) - start ))
 
-    if [ "$did_t2" = 0 ] && [ "$t" -ge "$S20" ]; then
+    if enabled T2 && [ "$did_t2" = 0 ] && [ "$t" -ge "$S20" ]; then
         did_t2=1
         log "T2 주입 — mysql-order ${T2_DOWN_S}s 다운 (t=${t}s, 진행도 $p건)"
         docker compose $COMPOSE_ARGS stop mysql-order >/dev/null 2>&1
@@ -88,14 +96,14 @@ while [ $(( $(now) - start )) -lt "$HARD_TIMEOUT" ]; do
         log "T2 완료 — mysql-order 복구"
     fi
 
-    if [ "$did_t3" = 0 ] && [ "$t" -ge "$S40" ]; then
+    if enabled T3 && [ "$did_t3" = 0 ] && [ "$t" -ge "$S40" ]; then
         did_t3=1
         log "T3 주입 — redis FLUSHALL (멱등키 유실, t=${t}s, 진행도 $p건)"
         docker compose $COMPOSE_ARGS exec -T redis redis-cli FLUSHALL >/dev/null 2>&1
         log "T3 완료"
     fi
 
-    if [ "$did_t1" = 0 ] && [ "$t" -ge "$S60" ]; then
+    if enabled T1 && [ "$did_t1" = 0 ] && [ "$t" -ge "$S60" ]; then
         did_t1=1
         cid=$(docker compose $COMPOSE_ARGS ps -q orderapi 2>/dev/null | head -1)
         if [ -n "$cid" ]; then
@@ -113,7 +121,7 @@ while [ $(( $(now) - start )) -lt "$HARD_TIMEOUT" ]; do
         fi
     fi
 
-    if [ "$did_t4" = 0 ] && [ "$t" -ge "$S80" ]; then
+    if enabled T4 && [ "$did_t4" = 0 ] && [ "$t" -ge "$S80" ]; then
         did_t4=1
         log "T4 주입 — kafka 로그 전소 재생성 (t=${t}s, 진행도 $p건)"
         docker compose $COMPOSE_ARGS stop orderapi >/dev/null 2>&1
