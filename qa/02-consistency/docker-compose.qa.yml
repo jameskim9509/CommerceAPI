@@ -20,6 +20,7 @@ name: consist
 services:
   mysql-user:
     image: mysql:8.0
+    command: ["--max-connections=300"]
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: user
@@ -38,6 +39,7 @@ services:
 
   mysql-order:
     image: mysql:8.0
+    command: ["--max-connections=300"]
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: orders
@@ -125,7 +127,7 @@ services:
       MAIL_PASSWORD: dummy-password
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
-    # ★ 호스트 포트 발행 없음 — replicas>1 이면 포트가 충돌한다. 접근은 gateway 경유(:8080).
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_SIZE:-30}
     depends_on:
       mysql-user: { condition: service_healthy }
       kafka: { condition: service_healthy }
@@ -159,6 +161,7 @@ services:
       USER_API_URL: http://gateway/user/customer
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_SIZE:-30}
     depends_on:
       mysql-order: { condition: service_healthy }
       redis: { condition: service_healthy }
