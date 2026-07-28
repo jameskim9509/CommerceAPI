@@ -8,6 +8,55 @@
 #
 # control(무방어) 실행은 무방어 브랜치(control/no-defense, tag v1) 체크아웃 후 재빌드(gradle bootJar → compose build)로 한다 (방어 5종 OFF; 오버레이 없음).
 #
+# -----------------------------------------------------------------------------
+# ★ DB_CONN_TIMEOUT_MS (기본 1000) — T2(이벤트 드롭)를 "재현"시키기 위한 QA 전용 값
+#
+#   T2 = mysql-order stop(T2_DOWN_S=10s). 이 결함은 Kafka CommonErrorHandler/DLT 가 없어
+#   기본 DefaultErrorHandler(FixedBackOff(0L, 9) = 지연 없이 총 10회 시도)가 재시도를 소진한 뒤
+#   log-and-commit 으로 이벤트를 "드롭"하는 것이다. 즉 드롭이 나려면
+#   리스너가 DB 불가 구간 안에서 10회 시도를 전부 태워야 한다.
+#
+#   1회 시도의 소요 = 커넥션 획득 블로킹 = HikariCP connectionTimeout.
+#     재시도 창 ≈ 10 × connectionTimeout  <  실제 DB 불가 시간(≈21s: stop 10s + 컨테이너
+#     재기동·mysqld 크래시 리커버리로 실제 접속 불가가 더 길게 이어진다)
+#   ┌ connectionTimeout 30000ms(HikariCP 기본, 무설정) → 재시도 창 300s ≫ 21s.
+#   │   DB 가 돌아올 때까지 첫 시도가 그대로 대기했다 성공한다 → 예외 자체가 안 난다
+#   │   → DefaultErrorHandler 가 개입할 일이 없다 → 재시도도 드롭도 0. (실측: T-noT4 런의 v3a=0)
+#   └ connectionTimeout 1000ms → 재시도 창 ≈10s < 21s → 10회 소진 후 드롭 발생 = T2 재현.
+#
+#   f426df4("카오스 앵커를 시간 기반으로 전환")는 정반대 방향으로 튜닝했다: T2_DOWN_S 를 25→10s 로
+#   낮춰 "DB 불가 시간(≈21s)을 connectionTimeout(30s) 안쪽에 넣어" Hikari 타임아웃 0건을 만들었다.
+#   그때의 목표는 대기 요청 몰살(실측 530건)을 막아 부하 예산을 지키는 것이었으나, 그 결과
+#   T2 결함이 통째로 잠들어 버렸다. 여기서는 T2_DOWN_S 를 되돌리는 대신 connectionTimeout 을 낮춰
+#   부하 예산은 유지한 채 재시도 창만 불가 구간 안으로 집어넣는다.
+#
+#   ★ HikariCP 하한 250ms: HikariConfig.setConnectionTimeout 이 250 미만이면 IllegalArgumentException
+#     (→ Spring 바인딩 실패 → 앱 기동 불가)이고, validateNumerics() 는 30000ms 로 되돌려 버린다.
+#     또 0 은 "즉시 실패"가 아니라 Integer.MAX_VALUE(사실상 무한 대기)다. 반드시 250 이상을 줄 것.
+#
+#   ★ 문서화되지 않으면 위험한 부작용 — JDBC 로그인 타임아웃 동반 하향:
+#     PoolBase.setLoginTimeout 은 dataSource.setLoginTimeout(max(1, (500 + connectionTimeout)/1000 초)) 를 건다.
+#     30000ms → 30초였던 것이 1000ms → **1초**가 된다(DriverDataSource 는 DriverManager 전역 static 에 반영).
+#     그리고 풀 초기화는 fail-fast 다(HikariConfig.initializationFailTimeout=1 기본): 첫 물리 커넥션이
+#     1초 안에 안 잡히면 PoolInitializationException → 컨텍스트 기동 실패 → 컨테이너 크래시루프 → 런 무효.
+#     minIdle 은 미설정 시 maxPoolSize 와 같아지므로(HikariConfig:1083) DB_POOL_SIZE=30 × (orderapi 4 + userapi 2)
+#     = 180 커넥션이 기동 직후 동시에 채워지고, healthcheck 의 `mysqladmin ping` 은 mysqld 워밍업 완료를
+#     보장하지 않아 service_healthy 만으로는 완충되지 않는다. T2 복구 직후(크래시 리커버리)에도 같은 제한이 걸린다.
+#     → up -d 직후 반드시 아래로 6개 앱 컨테이너의 정상 기동을 확인할 것 (README §실행 절차에도 넣었다):
+#         docker compose -f docker-compose.qa.yml logs orderapi userapi \
+#           | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
+#       크래시루프가 보이면 DB_CONN_TIMEOUT_MS=2000 으로 올린다 — 10 × 2000 = 20s < 21s 라 T2 재현 조건은
+#       그대로 만족하면서 로그인 타임아웃만 2초로 완화된다.
+#
+#   ★ 가드: 카오스 없는 스모크(C-smoke/T-smoke)에서 v3a(PENDING/PAID 잔여)가 0 이 아니면
+#     이 값이 너무 공격적이라는 신호다 — 평상시 부하만으로 커넥션 획득이 타임아웃해
+#     T2 와 무관한 드롭을 만들고 있는 것이므로 값을 올려(2000 → 5000) 스모크 v3a=0 을 회복시킨 뒤
+#     본 런을 돌린다.
+#
+#   ★ 양 arm 동일 적용 필수: control(v1) 과 treatment 는 같은 compose 를 써야 비교가 성립한다.
+#     또 기존 런(C-run1~3 / T-run1~2 / T-noT4)은 이 설정 없이(=30000ms) 측정됐으므로 직접 비교 금지.
+# -----------------------------------------------------------------------------
+#
 # 사용 (상세 절차는 README §실행 — 수동 측정):
 #   export ORDERAPI_REPLICAS=4                                          # deploy.replicas 로 주입 (기본 4)
 #   docker compose -f docker-compose.qa.yml up -d \
@@ -128,6 +177,16 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_SIZE:-30}
+      # ★ 1000ms: DefaultErrorHandler 10회 × connectionTimeout(=재시도 창 10s) < DB 불가 시간(≈21s)
+      #   이어야 T2 의 "10회 재시도 후 드롭"이 재현된다. 기본 30000ms 면 재시도 창 300s 라 첫 시도가
+      #   DB 복구까지 그냥 대기했다 성공 → 예외 0 → 드롭 0 (실측 T-noT4 v3a=0).
+      #   HikariCP 하한 250ms(미만은 기동 실패/30000 되돌림), 0 은 무한 대기이므로 금지.
+      #   무카오스 스모크에서 v3a≠0 이면 값이 너무 공격적 → 상향(2000~5000). 상세는 파일 상단 주석.
+      #   (T2 는 mysql-order 만 멈추지만 두 서비스에 대칭 적용 — DB_POOL_SIZE 와 같은 관례)
+      #   ★ 부작용: JDBC 로그인 타임아웃도 함께 내려간다 — max(1, (500+ct)/1000)초 (PoolBase.setLoginTimeout).
+      #     1000ms → 1초. 기동 시 풀 초기화가 fail-fast(initializationFailTimeout=1)라 첫 물리 커넥션이
+      #     1초를 넘기면 PoolInitializationException 으로 컨테이너가 크래시루프에 빠진다. up -d 직후 로그 확인 필수.
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${DB_CONN_TIMEOUT_MS:-1000}
     depends_on:
       mysql-user: { condition: service_healthy }
       kafka: { condition: service_healthy }
@@ -162,6 +221,16 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_SIZE:-30}
+      # ★ 1000ms: T2(mysql-order stop) 의 직접 대상. DefaultErrorHandler 10회 × connectionTimeout
+      #   = 재시도 창 10s < 실제 DB 불가 시간(≈21s) → 재시도 소진 → log-and-commit 드롭 = T2 재현.
+      #   30000ms(Hikari 기본)면 재시도 창 300s 라 StockConsumer 가 DB 복구까지 대기했다 성공해
+      #   결함이 통째로 잠든다. f426df4 는 T2_DOWN_S 25→10s 로 오히려 그 상태를 만들었다.
+      #   HikariCP 하한 250ms / 0 = 무한 대기 금지. 무카오스 스모크 v3a≠0 이면 상향할 것.
+      #   ★ 부작용: JDBC 로그인 타임아웃 = max(1, (500+ct)/1000)초 로 함께 하향(1000ms → 1초).
+      #     기동 시 fail-fast 풀 초기화(minIdle=maxPoolSize=30 를 4 replicas 가 동시에 채운다)와
+      #     T2 복구 직후 mysqld 크래시 리커버리 구간에 같은 1초 제한이 걸린다. 크래시루프면 2000 으로 올릴 것
+      #     (10 × 2000 = 20s < 21s 라 T2 재현 조건은 유지된다).
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${DB_CONN_TIMEOUT_MS:-1000}
     depends_on:
       mysql-order: { condition: service_healthy }
       redis: { condition: service_healthy }
