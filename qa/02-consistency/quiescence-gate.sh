@@ -28,6 +28,17 @@ INTERVAL="${INTERVAL:-5}"
 TIMEOUT="${TIMEOUT:-600}"
 SCOPE="username LIKE 'ctrich%'"
 
+# ★ 정착 도달 여부를 산출물로 남긴다 — RUN_LABEL 이 있으면 results/<LABEL>-quiescence.log 에 tee.
+#   verify 는 "정착 후 최종 DB 상태"를 전제로 판정하는데, 게이트가 stdout 에만 찍으면
+#   사후에 그 전제가 충족됐는지 확인할 방법이 없다(README 절차는 게이트 실패와 무관하게
+#   다음 줄에서 verify 를 실행하므로 TIMEOUT 이 나도 verify.txt 는 똑같이 생성된다).
+#   측정 산출물 3종(verify/chaos/k6) 옆에 게이트 로그를 나란히 남겨야 런의 유효성을 재검할 수 있다.
+RUN_LABEL="${RUN_LABEL:-}"
+if [ -n "$RUN_LABEL" ]; then
+    mkdir -p ./results
+    exec > >(tee "./results/${RUN_LABEL}-quiescence.log") 2>&1
+fi
+
 q_order() { docker compose $COMPOSE_ARGS exec -T mysql-order mysql -uroot -proot -N -B orders -e "$1" 2>/dev/null | tr -d '[:space:]'; }
 q_user()  { docker compose $COMPOSE_ARGS exec -T mysql-user  mysql -uroot -proot -N -B user   -e "$1" 2>/dev/null | tr -d '[:space:]'; }
 
