@@ -143,7 +143,24 @@ SELECT COUNT(*) FROM customer WHERE balance < 0 AND <scope>;                  --
 
 ### 측정 계획 / KPI — 무방어 vs 방어 집계 before/after
 
-검증은 위 §검증의 3대 불변식·9개 체크로 판정한다. 실측치는 이 시나리오 하네스를 구현·실행한 뒤 채운다(표기는 전부 `⟨측정전⟩`).
+검증은 위 §검증의 3대 불변식·9개 체크로 판정한다. **측정 완료** — 전체 수치·런별 원값·한계는
+[qa/02-consistency/results/MEASUREMENT_REPORT.md](../qa/02-consistency/results/MEASUREMENT_REPORT.md).
+
+**측정 조건**: arm 당 10회 interleaved(총 20런), `ORDER_TARGET=100000` · `ARRIVAL_RATE=90`,
+카오스 T1–T4 4종 전부 주입(20/20 런 발화), 양 arm QA 하네스 바이트 동일, 정착 게이트 20/20 통과.
+
+**실측 KPI** — 20런 집계(중앙값 기준, 점추정 금지 원칙에 따라 범위 병기):
+
+| 지표 | control (무방어) | treatment (방어) | 비 |
+| --- | ---: | ---: | ---: |
+| **N′** 중앙값 | **722.5** | **200** | **3.61배** |
+| N′ 범위 | [418 .. 1,421] | [8 .. 825] | 겹침 |
+
+> `N′` 은 초과판매 이중 계상을 제거한 값이다. 재고가 0 으로 클램프되면 `v2b ≡ v2c` 가 되는데
+> 원 산식이 둘을 다 더해 control 만 부풀렸다(실측 배율 4.17 → 보정 3.61). 산식은 이후 `max(v2b, v2c)` 로
+> 수정했으므로 **다음 런부터는 verify 가 찍는 N 이 곧 N′** 다.
+
+**범위가 겹친다** — 단일 런의 N′ 만으로 arm 을 판별할 수 없다. 분포 수준의 주장만 성립한다.
 
 #### 측정 형태 — 5개 방어를 "다 끈 무방어" vs "다 켠 현재", 같은 부하·같은 카오스
 
@@ -151,7 +168,15 @@ SELECT COUNT(*) FROM customer WHERE balance < 0 AND <scope>;                  --
 
 - **control (무방어)** → desired 위반 대량 + 카오스 잔여 ≈ **N**
 - **treatment (현재)** → desired 방어(→0) + 카오스 잔여 ≈ **r** (0 아님)
-- **KPI = N → r** — "5개 정합성 방어 설계로 통합 부하에서 정합성 위반 N → 소수 r 감소". r이 0 아닌 건 카오스(5개 방어 대상이 아닌 주변 장애 T1–T4)가 **양쪽에 똑같이** 남기 때문(감소분 = 방어가 실제로 커버한 부분).
+- **KPI = N → r** — "5개 정합성 방어 설계로 통합 부하에서 정합성 위반 N → 소수 r 감소". r이 0 아닌 건 카오스(5개 방어 대상이 아닌 주변 장애 T1–T4)가 양쪽에 남기 때문.
+
+> **측정으로 반증된 전제** — 원래 이 절은 "카오스가 **양쪽에 똑같이** 남으므로 감소분 = 방어가 커버한 부분"이라고 적었다. 20런 실측 결과 그 대칭은 성립하지 않는다.
+>
+> - **T1·T3 은 control 에서 구조적으로 관측 불가** — 계측 근거(환불 이력·`processed_events`)가 곧 방어 ③⑤ 라서, 방어를 끄면 계측기도 사라진다. control 의 0 은 "장애가 없었다"가 아니다.
+> - **T2 몫 차이는 방어 효과로 귀속되지 않는다** — 두 arm 의 소스 차이 6개 파일에 에러 핸들러·DLT·재시도 설정이 **없다**. control 이 ⑤ dedup 부재로 같은 브로커에 1.70~1.79배의 이벤트를 흘린 **백로그 깊이 차이**로도 같은 결과가 나온다. `FAULTS=T2` 단독 런으로 구분해야 한다.
+> - **진짜로 양 arm 에 공통인 잔여는 T4 뿐이고, 그마저 감소가 유의하지 않다**(U=38, 임계 23). treatment 잔여의 **99.7%** 가 T4 몫이다.
+>
+> 즉 `N − r` 을 "방어가 커버한 부분"으로 곧장 읽으면 안 된다. 상세는 [MEASUREMENT_REPORT §4.7](../qa/02-consistency/results/MEASUREMENT_REPORT.md).
 
 #### 이건 "개별 귀속 없는 집계 주장"이다 (한계)
 
@@ -159,12 +184,15 @@ SELECT COUNT(*) FROM customer WHERE balance < 0 AND <scope>;                  --
 
 - **개별 귀속 불가** — "`@Version`이 초과판매를 막았다"는 못 하고 "5개 방어 설계가 위반을 N→r 줄였다"만 주장.
 - **N은 증폭됨** — ① 없으면 중복주문 → ②④ 경합 폭증. 근본원인 하나가 하류 위반 여럿을 낳아 N이 부풀어(현실적이나 시스템 고유값 아님).
-- **①(멱등)은 9개 SQL 불변식에 안 잡힘** — 중복 주문은 돈 보존을 안 깨(두 주문이 각자 정당 결제). k6 `duplicate_order_responses`를 집계에 함께 포함해야 ①이 반영됨.
+- ~~**①(멱등)은 9개 SQL 불변식에 안 잡힘** — k6 `duplicate_order_responses`를 집계에 함께 포함해야 ①이 반영됨.~~
+  → **해소됨.** `orders.idempotency_key`(V6, UNIQUE 아님 — 제약을 걸면 DB 가 중복을 막아 control 이 오염된다)를
+  진입 시 기록해, 같은 키로 2건 이상 생긴 초과분을 **DB 단독으로** 정확히 센다. k6 는 판정에 관여하지 않는다
+  (타임아웃 재시도는 양쪽 응답이 status 0 이라 클라이언트가 판정할 수 없다). 실측 control 중앙값 90 / treatment 0.
 - (단일 변수 clean delta가 필요하면 **④ 잔액 락**만 예외 — `f0a48d5~1` vs `f0a48d5` git 짝 실험이 공짜·단일변수라 집계 옆 보조 증거로 붙일 수 있음.)
 
 #### control(무방어) 빌드
 
-**과거 커밋 체크아웃이 아니다** — 초기 커밋엔 SAGA·아웃박스·주문 흐름 자체가 없어 "5개 방어만 없고 나머진 그대로"인 clean 지점이 없다. 대신 **현재 코드(treatment)에서 5개 방어만 떼낸 전용 브랜치 `control/no-defense`(tag `v1`)** 를 만든다: ① 멱등 게이트 off · ②/④ `@Version` 제거 · ⑤ `processed_events` dedup 제거 · ③ 환불 보상 off. 운영 코드(treatment)엔 방어-off 스위치를 두지 않아(footgun 방지) 무방어 소스는 이 브랜치에만 존재한다. **측정은 브랜치=arm** — `v1` 을 체크아웃해 같은 QA 하네스를 돌리면 control(무방어), 방어 브랜치(feature/main)에서 돌리면 treatment 다(별도 control 이미지·오버레이·토글 없음; 상세 [qa/02-consistency/README.md](../qa/02-consistency/README.md)). 변형 버그가 위반으로 오계수되지 않게, **무카오스·무트리거 clean 부하로 pre-flight 스모크** 후 사용.
+**과거 커밋 체크아웃이 아니다** — 초기 커밋엔 SAGA·아웃박스·주문 흐름 자체가 없어 "5개 방어만 없고 나머진 그대로"인 clean 지점이 없다. 대신 **현재 코드(treatment)에서 5개 방어만 떼낸 전용 브랜치 `control/no-defense`(tag `v2`)** 를 만든다: ① 멱등 게이트 off · ②/④ `@Version` 제거 · ⑤ `processed_events` dedup 제거 · ③ 환불 보상 off. 운영 코드(treatment)엔 방어-off 스위치를 두지 않아(footgun 방지) 무방어 소스는 이 브랜치에만 존재한다. **측정은 브랜치=arm** — `v2` 를 체크아웃해 같은 QA 하네스를 돌리면 control(무방어), 방어 브랜치(feature/main)에서 돌리면 treatment 다(별도 control 이미지·오버레이·토글 없음; 상세 [qa/02-consistency/README.md](../qa/02-consistency/README.md)). 변형 버그가 위반으로 오계수되지 않게, **무카오스·무트리거 clean 부하로 pre-flight 스모크** 후 사용.
 
 #### 재현 하네스 요구사항
 
@@ -192,5 +220,20 @@ SELECT COUNT(*) FROM customer WHERE balance < 0 AND <scope>;                  --
 - **ADR-004 상태 정정** — 아웃박스는 양 모듈에 **완전히 구현**됐으나 헤더가 아직 `제안(Proposed)`. `수용(Accepted)` 으로 갱신 필요.
 - **DLQ + 수동 정산 큐 (미착수 · 향후 과제)** — 자동 복구가 끝내 실패한 건을 격리·추적할 저장소. 현재 Kafka 컨슈머는 에러 핸들러 설정이 없어 **스프링 부트 기본 `DefaultErrorHandler`(약 10회 in-memory 재시도 후 log-and-commit = 메시지 드롭)** 로 동작하고, 잔액 낙관적 락은 30회 재시도 후 rethrow 할 뿐 — 격리 저장소가 없다("무한 재배달"이 아니라 **유한 재시도 후 조용한 유실**). "운영 격리"를 실제로 관측하려면 net-new 컴포넌트가 필요.
 - **아웃박스 poison-row HOL 격리 (미착수)** — `OutboxPoller` 가 첫 실패 시 `break`(순서 보존)라 발행 불가 row 1건이 그 모듈의 이후 모든 outbox 를 무기한 차단(HOL block). 재시도 상한 후 **개별 skip/격리**로 수정.
-- **per-fault 귀속 (관심사 아님)** — 어떤 폴트(T1/T2/…)가 어떤 위반을 냈는지 per-request 로 쪼개려면 `test_run_id`(+`fault_type`) 컬럼과 폴트 인젝션 훅(`X-Extra-Fault-*`)이 필요하다. 본 KPI 는 잔여를 **총량으로만** 보므로 구축하지 않는다(주변 장애 대부분 T1–T4 은 인프라 카오스로 이미 주입 가능하며, 필요해지면 선행 과제로 분리).
+- **per-fault 귀속 — 부분 구현됨(잔여는 아래)**. 원래는 `test_run_id`(+`fault_type`) 컬럼과 폴트 인젝션 훅(`X-Extra-Fault-*`)이 필요하다고 보고 "관심사 아님"으로 미뤘으나, **앱을 건드리지 않고 최종 DB 상태의 지문만으로** 상당 부분이 계수됐다(`verify-consistency.sh` §폴트 귀속).
+
+  | 장애 | 계수 방법 | 상태 |
+  | --- | --- | --- |
+  | ① 중복 주문 | `orders.idempotency_key` 단위 초과분 | ✅ 양 arm |
+  | ② 초과판매 | `product_item.count` 델타(`v2c`) | ✅ 양 arm |
+  | ③ 재고소진→환불 | 잔액 이력 `description` 의 `reason=` 파싱 | ⚠ treatment 전용 |
+  | ④ 잔액 Lost Update | 원장 체인 끊김(`current_money` ≠ 직전 `change_money`, `LAG()`) | ✅ 양 arm |
+  | ⑤ 이벤트 중복 | `o_L1 = s_oc − s_pd − s_pf` 의 **음수 절대값** (outbox 전용이라 arm 중립) | ✅ 양 arm |
+  | T1 | 환불 `description` 의 `reason=허용되지 않은 주문 상태 전이입니다.` | ⚠ treatment 전용 |
+  | T2 / T4 | PENDING 생성시각 히스토그램 ↔ 카오스 주입 시각 대조 | ⚠ 근사 |
+  | T3 | ① 과 같은 지표(주 경로일 뿐 유일 경로 아님) | ⚠ 분리 불가 |
+
+  **④⑤ 는 이번에 처음 계수됐다** — 이전에는 "안 깨졌다"까지만 말할 수 있었다.
+
+  **남은 과제**: (a) ③·T1 은 계측 근거가 곧 방어 ③⑤ 라 control 에서 구조적으로 관측 불가 — arm 중립 지표가 필요하다. (b) T2/T4 는 DB 지문이 같아 시각 클러스터로만 근사 분리된다. 확정 귀속은 `FAULTS` 절제 런(예 `FAULTS=T2` 단독)으로만 가능하다. (c) ⑤ 의 **발생 기전**(브로커 재배달 / 아웃박스 재발행 / 에러 핸들러 재시도)은 현재 산출물로 구분되지 않는다 — 컨슈머 리밸런스 카운터 하나면 갈린다.
 - **낙관적 락 서술 정합** — ADR-002 의 "409 STOCK_CONFLICT, 클라이언트 재시도"는 **동기** 서술이다. 실제 SAGA 런타임에서는 `StockConsumer` 가 예외를 잡아 `StockReservationFailed` 보상으로 변환하며(클라이언트는 이미 200/PENDING 수신), 낙관적 락 정확성은 **결과**(음수재고 0, 차감==CONFIRMED, version==차감횟수, 실패건 환불)로 검증한다. ADR-002 에 이 런타임 차이를 보강.
