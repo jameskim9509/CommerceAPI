@@ -111,10 +111,29 @@ qa/02-consistency/
 1. 브랜치 변경 및 이미지 빌드
 
 ```bash
-git checkout v1                                  # 무방어 브랜치
+git checkout v2                                  # 무방어(control) — control/no-defense 의 하네스 갱신본
 cd qa/02-consistency
 docker compose -f docker-compose.qa.yml build    # 이미지 재빌드
 ```
+
+> **태그 세대 주의**: `v1` 은 구 하네스(T2 미발화 · 폴트 귀속 계수 없음 · N 산식 이중 계상) 시점의 control 이다.
+> 현재 하네스로 측정하려면 반드시 **`v2`** 를 쓴다. `v1` 은 과거 측정의 재현용으로만 남겨둔다.
+>
+> **arm 전환 시 재빌드를 피하려면** 양 arm 이미지를 미리 구워 태그해 두고 `:latest` 로 승격만 하면 된다.
+> ADR-008 이 요구하는 interleaved 반복(T→C→T→C…)은 매번 재빌드하면 비현실적이다:
+>
+> ```bash
+> git checkout v2   && docker compose -f docker-compose.qa.yml build orderapi userapi
+> docker tag consist-orderapi consist-orderapi:c && docker tag consist-userapi consist-userapi:c
+> git checkout main && docker compose -f docker-compose.qa.yml build orderapi userapi   # 방어 브랜치
+> docker tag consist-orderapi consist-orderapi:t && docker tag consist-userapi consist-userapi:t
+>
+> # 이후 런 직전에 승격만 (eureka/gateway 는 arm 간 동일해 재빌드 불필요)
+> docker tag consist-orderapi:t consist-orderapi:latest && docker tag consist-userapi:t consist-userapi:latest
+> ```
+>
+> QA 하네스는 양 arm 바이트 동일해야 하므로, 하네스를 고치면 **반드시 양 브랜치에 같은 커밋을 반영**하고
+> `git diff --stat <control> <treatment> -- qa/02-consistency/` 가 비는지 확인할 것.
 
 2. 통합 시나리오 실행전 스모크 테스트 — 빌드/세팅 정상동작 확인
 
