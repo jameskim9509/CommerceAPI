@@ -17,7 +17,7 @@
 # 사용: 수동 측정 절차(README §실행)에서 k6 부하 직전에 백그라운드로 띄운다.
 #   ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
 #   CHAOS_PID=$!        # k6 종료 후 kill $CHAOS_PID
-# 환경변수: COMPOSE_ARGS(기본 -f docker-compose.qa.yml) POLL(기본 3) T2_DOWN_S(기본 10) T1_DOWN_S(기본 25)
+# 환경변수: COMPOSE_ARGS(기본 -f docker-compose.qa.yml) POLL(기본 3) T2_DOWN_S(기본 10) T1_DOWN_S(기본 45)
 #           FAULTS(기본 T2,T3,T1,T4) — 주입할 폴트 선택. 잔여 r 의 개별 귀속용.
 #           HARD_TIMEOUT(기본 부하추정+정착)
 #           ARRIVAL_RATE(기본 200) — 앵커 시각 환산에 쓴다. k6 에 준 값과 반드시 같아야 한다.
@@ -36,7 +36,13 @@ ORDER_TARGET="${ORDER_TARGET:-100000}"
 ARRIVAL_RATE="${ARRIVAL_RATE:-200}"
 POLL="${POLL:-3}"
 T2_DOWN_S="${T2_DOWN_S:-10}"
-T1_DOWN_S="${T1_DOWN_S:-25}"
+# ★ 45s 는 Kafka consumer session.timeout.ms 기본값에 맞춘 값 — 줄이지 말 것.
+#   kill 된 인스턴스의 멤버는 세션 만료(≈45s)까지 그룹에 남는다. 그 전에 재기동본이 새 멤버로
+#   JoinGroup 하면 리밸런스가 좀비의 만료를 기다리며 늘어지고, 기본 RangeAssignor(eager) 라
+#   그동안 생존 인스턴스까지 파티션을 반납한 채 대기 → 그룹 전체 소비 정지.
+#   sleep 을 45s 로 두면 컨테이너 기동 자체가 만료 이후라 부팅 시간과 무관하게 이 구간을 피한다.
+#   (T1 의 피해량은 kill 순간 reserveStock↔마커 창에서 확정되므로 이 값과 무관 — 처리량만의 문제.)
+T1_DOWN_S="${T1_DOWN_S:-45}"
 # 종료 보증(T4 앵커에만 의존하지 않음): 측정자가 k6 종료 후 kill 하는 게 기본이고, 놓치더라도
 # (1) 진행도 정체 감지(STALL_LIMIT) (2) 부하추정+정착 HARD_TIMEOUT 이 이중으로 종료를 보장.
 HARD_TIMEOUT="${HARD_TIMEOUT:-$(( ORDER_TARGET / ARRIVAL_RATE + 300 ))}"
