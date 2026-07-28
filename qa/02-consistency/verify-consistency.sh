@@ -127,8 +127,16 @@ status_dist=$(q_order "SELECT status, COUNT(*) FROM orders WHERE ($SCOPE_O) GROU
 hot_version=$(n "$(q_order "SELECT version FROM product_item WHERE id=$HOT_ID;")")
 
 # ---- 집계 N (행/단위 위반 총수; ① 포함) ----
+# ★ v2b + v2c 를 더하면 초과판매가 이중 계상된다 — 재고가 0 으로 클램프되는 조건에서
+#   v2b = |차감량 − CONFIRMED수량| = |init − 0 − confirmed| = confirmed − init = v2c 가 구조적 항등이 된다.
+#   실측: control 10/10 런 전부 v2b == v2c (91/108/105/98/110/109/122/115/113/120).
+#   treatment 는 v2c=0 이라 영향이 없으므로 이 이중 계상은 control 만 부풀려 arm 배율을 편향시킨다
+#   (실측 배율 4.17 → 보정 후 3.61).
+#   둘은 같은 초과판매를 다른 각도로 본 것이므로 max 로 합친다 — 두 신호를 다 살리되 한 번만 센다.
+#   (v2a·v2b·v2c 개별값은 위 출력에 그대로 남으므로 정보 손실은 없다.)
 v1n=$([ "$v1" = "n/a" ] && echo 0 || echo "$v1")
-N=$(( v1n + v2a + v2b + v2c + v3a + v3b + v3c + v3e ))
+v2max=$(( v2b > v2c ? v2b : v2c ))
+N=$(( v1n + v2a + v2max + v3a + v3b + v3c + v3e ))
 
 # =============================================================================
 # 폴트 귀속(참고) — 여기부터는 N 에 절대 더하지 않는다. 판정도 하지 않는다.
