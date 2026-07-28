@@ -252,6 +252,34 @@ else
     g_pr_ex=$(( g_pr > a_t1 ? g_pr - a_t1 : 0 ))
 fi
 
+# ---- o_L1/o_L2/o_L3: outbox_events 만으로 세는 SAGA 체인 보존식 (★ arm 중립) ----
+# a_T2T4 는 processed_events 를 기준선으로 쓰는데 control(v1) 은 그 기록 자체를 제거해(⑤ 방어 제거)
+# n/a 로 강등된다 — 계측기가 방어 그 자체라 arm 비교가 불가능하다.
+# v1 이 건드리지 않는 outbox_events 만으로 같은 손실을 세면 양 arm 에서 같은 의미를 갖는다.
+#
+# SAGA 체인(ADR-003) — 각 hop 은 반드시 하나의 후속을 낳는다:
+#   OrderCreated           → PaymentConsumer → PaymentDeducted | PaymentFailed
+#   PaymentDeducted        → StockConsumer   → 주문 CONFIRMED  | StockReservationFailed
+#   StockReservationFailed → RefundConsumer  → PaymentReverted        (★ control 은 본문이 비어 미발행)
+#
+# ★ 부호를 살린다 (clamp 하지 않는다):
+#     양수 = 하류가 못 받음 → 전송 유실(T2 드롭 / T4 로그 전소)
+#     음수 = 같은 이벤트가 두 번 처리됨 → ⑤ 이벤트 중복 배달 위반(control 기대 신호)
+#   ⑤ 는 지금까지 "계수 불가"였다(dedup 이 걸러낸 재배달은 DB 에 흔적이 없다). control 은 dedup 이 없어
+#   재배달이 곧 재실행이고 그때마다 후속 이벤트를 한 번 더 발행하므로, o_L1 의 음수 크기가 ⑤ 의 하한이 된다.
+#
+# ★ 정착(quiescence) 이후에 읽어야 한다 — 부하 중에는 in-flight 가 그대로 양수로 잡힌다
+#   (실측: 부하 중간 o_L1=907 인데 그때 PENDING/PAID 가 1,369 였다).
+# ★ o_L2 는 중복 처리에 강건하다: 이미 CONFIRMED 인 주문에 PaymentDeducted 가 재배달되면 markPaid 가
+#   예외를 던져 StockReservationFailed 가 발행되므로 s_pd = confirmed + s_srf 항등이 유지된다.
+# ★ o_L3 만 arm 중립이 아니다 — control 은 RefundConsumer 본문이 비어 s_pr=0 이라 o_L3 = s_srf 가 된다.
+#   control 에서는 "환불 미실행 건수"로 읽고, 유실 지표로 읽지 말 것.
+# ★ outbox 는 전역 계수, orders 는 런 스코프(ctrich)다. 런마다 down -v 하는 전용 스택에서만 일치한다.
+confirmed_cnt=$(n "$(q_order "SELECT COUNT(*) FROM orders WHERE status='CONFIRMED' AND ($SCOPE_O);")")
+o_l1=$(( s_oc  - s_pd - s_pf ))
+o_l2=$(( s_pd  - confirmed_cnt - s_srf ))
+o_l3=$(( s_srf - s_pr ))
+
 # T2/T4 분리 보조: 미착지 주문(PENDING/PAID)의 생성 시각 분 단위 히스토그램.
 # 카오스 로그의 주입 시각과 대조해 클러스터 위치로 귀속한다(T2=진행도 20%, T4=80%).
 pend_hist=$(q_order "SET SESSION group_concat_max_len=1048576; SELECT COALESCE(GROUP_CONCAT(CONCAT(m,'=',c) ORDER BY m SEPARATOR '|'),'-') FROM (SELECT DATE_FORMAT(created_date,'%H:%i') m, COUNT(*) c FROM orders WHERE status IN ('PENDING','PAID') AND ($SCOPE_O) GROUP BY 1) t;")
@@ -367,6 +395,18 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "            이 스크립트는 p_* 합계가 0 이면 a_T2T4 를 n/a 로 강등한다(토픽별 sent/proc 는 원시값 그대로 남긴다)."
     echo "         ※ 전역·누적 계수다 — control 런이 남긴 '마커 0' outbox 행이 같은 named volume 을 쓰는 이후"
     echo "            treatment 런까지 영구 오염시킨다. arm 을 바꿀 때는 반드시 down -v 로 볼륨을 비울 것."
+    echo "   [outbox 체인 보존식 — processed_events 비의존, ★ 양 arm 비교 가능]"
+    echo "         o_L1 order-created 미착지    : $(num "$o_l1")   (s_oc $s_oc − s_pd $s_pd − s_pf $s_pf)"
+    echo "         o_L2 payment-deducted 미착지 : $(num "$o_l2")   (s_pd $s_pd − CONFIRMED $confirmed_cnt − s_srf $s_srf)"
+    echo "         o_L3 stock-resv-failed 미착지: $(num "$o_l3")   (s_srf $s_srf − s_pr $s_pr)  ※ arm 중립 아님"
+    echo "         ※ 부호가 의미다 — 양수 = 하류가 못 받음(T2 드롭 / T4 로그 전소), 음수 = 같은 이벤트 이중 처리(⑤)."
+    echo "            a_T2T4 가 control 에서 n/a 인 이유(계측기 processed_events 가 곧 ⑤ 방어)를 우회한다."
+    echo "            v1 은 outbox_events 를 건드리지 않으므로 이 세 값은 양 arm 에서 같은 의미를 갖는다."
+    echo "         ※ ⑤ 의 하한: control 은 dedup 이 없어 재배달이 곧 재실행이고 그때마다 후속 이벤트를 한 번 더"
+    echo "            발행한다 → o_L1 이 음수면 그 절대값이 '중복 처리된 OrderCreated 수' 하한이다(d5 보완)."
+    echo "         ※ 정착 이후 값이라야 유효하다 — 부하 중이면 in-flight 가 그대로 양수로 잡힌다."
+    echo "         ※ o_L3 는 control 에서 RefundConsumer 본문이 비어 s_pr=0 → o_L3 = s_srf 가 된다."
+    echo "            control 에서는 '환불 미실행 건수'로 읽고 유실 지표로 읽지 말 것."
     echo "[의도된 장애 ①–⑤]"
     echo "   d1    중복 주문/결제 (= v1 재사용)       : $(num "$d1") 건"
     echo "   d2    낙관적 락 충돌 환불                : $(num "$d2") 건  (reason=재고 동시성 충돌)"
