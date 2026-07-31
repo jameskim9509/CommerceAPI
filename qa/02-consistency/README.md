@@ -53,56 +53,18 @@ qa/02-consistency/
 
 ## 환경변수
 
-모두 `docker-compose.qa.yml` 이 `${VAR:-기본값}` 으로 읽는다. `.env` 파일은 없으므로 **셸 `export` 로만** 주입되고, 지정하지 않으면 기본값이 그대로 쓰인다. 값 변경은 컨테이너 재생성(`down -v` → `up -d`) 이후에만 반영된다 — 이미 떠 있는 컨테이너에는 적용되지 않는다.
+모두 `docker-compose.qa.yml` 이 `${VAR:-기본값}` 으로 읽는다. 환경변수로 지정하지 않으면 기본값이 그대로 쓰인다.
 
-| 변수                 | 기본값    | 의미                                                       |
-| -------------------- | --------- | ---------------------------------------------------------- |
-| `ORDERAPI_REPLICAS`  | `4`       | orderApi 인스턴스 수 (× Kafka 4파티션)                     |
-| `USERAPI_REPLICAS`   | `2`       | userApi 인스턴스 수 (SAGA 결제 컨슈머 처리량 상한)         |
-| `DB_POOL_SIZE`       | `30`      | HikariCP `maximumPoolSize` (양 서비스 공통)                |
-| `DB_CONN_TIMEOUT_MS` | `1000`    | HikariCP `connectionTimeout`(ms) — **T2 재현용**           |
-| `ORDER_TARGET`       | `100000`  | k6 목표 주문 수                                            |
-| `ARRIVAL_RATE`       | `200`     | k6 도착률(RPS)                                             |
-| `RICH_POOL`          | `300`     | 시드 `ctrich` 고객 풀 크기                                 |
-| `RUN_LABEL`          | `unknown` | 산출물 파일명 접두 (`results/$RUN_LABEL-*`)                |
-
-### `DB_CONN_TIMEOUT_MS` — 왜 1000ms 인가
-
-주변 장애 **T2(에러 발생시 10회 재시도 후 이벤트 드롭)** 를 실제로 발화시키기 위한 QA 전용 값이다.
-
-- Kafka 기본 `DefaultErrorHandler` = `FixedBackOff(0L, 9)` = **지연 없이 총 10회 시도**.
-- 리스너 1회 시도의 소요 = 커넥션 획득 블로킹 = **HikariCP `connectionTimeout`**.
-- 따라서 **재시도 창 ≈ 10 × connectionTimeout**. 이 창이 **실제 DB 불가 시간(≈21초)** 보다 짧아야 재시도가 소진되고 log-and-commit 드롭(= 이벤트 영구 유실)이 일어난다.
-  - `30000ms`(HikariCP 기본, 무설정): 재시도 창 300초 ≫ 21초 → 첫 시도가 DB 복구까지 그냥 대기했다 성공 → **예외 자체가 안 나므로 재시도도 드롭도 0**. 실측으로도 `T-noT4` 런에서 `v3a`(PENDING/PAID 잔여)=0 이었다.
-  - `1000ms`: 재시도 창 ≈10초 < 21초 → 드롭 재현.
-- 커밋 `f426df4` 는 반대 방향으로 튜닝했다 — `T2_DOWN_S` 를 25→10초로 낮춰 DB 불가 시간을 `connectionTimeout`(30초) **안쪽**에 넣어 대기 요청 몰살(실측 530건)을 막고 부하 예산을 지켰다. 그 부작용으로 T2 결함이 통째로 잠들었다. 여기서는 `T2_DOWN_S` 를 되돌리는 대신 `connectionTimeout` 을 낮춰, 부하 예산은 유지한 채 재시도 창만 불가 구간 안으로 넣는다.
-
-> **하한 250ms**: HikariCP 는 250 미만이면 `IllegalArgumentException`(→ Spring 바인딩 실패 → 앱 기동 불가)이거나 `30000ms` 로 되돌린다. **`0` 은 "즉시 실패"가 아니라 무한 대기**이므로 절대 쓰지 말 것.
->
-> **가드**: 카오스 없는 스모크(`C-smoke`/`T-smoke`)에서 `v3a` 가 **0 이 아니면 이 값이 너무 공격적이라는 신호**다. T2 와 무관하게 평상시 부하만으로 커넥션 획득이 타임아웃하고 있는 것이므로 `DB_CONN_TIMEOUT_MS` 를 올려(2000 → 5000) 스모크 `v3a=0` 을 회복한 뒤 본 런을 돌린다.
->
-> **비교 주의**: 기존 런 `C-run1`~`C-run3` · `T-run1`~`T-run2` · `T-noT4` 는 **이 설정 없이(= 30000ms) 측정**됐다. 그 결과들과 `DB_CONN_TIMEOUT_MS` 적용 후의 런은 T2 발화 여부가 달라 `N`/`r`/`money_leak` 을 직접 비교하면 안 된다. 새 값으로는 **control/treatment 양 arm 을 모두 다시 측정**해야 `N→r` 이 성립한다.
->
-> `connectionTimeout` 을 5000ms 미만으로 두면 HikariCP 가 `validationTimeout`(기본 5000ms)을 같은 값으로 자동 하향한다 — 의도된 부작용이며 양 arm 에 동일하게 적용된다.
-
-#### 부작용 — JDBC 로그인 타임아웃도 함께 내려간다 (기동 크래시루프 위험)
-
-`connectionTimeout` 은 커넥션 **획득 대기**만 제어하는 값이 아니다. HikariCP 는 풀을 만들 때 `dataSource.setLoginTimeout(max(1, (500 + connectionTimeout) / 1000)초)` 를 건다(`PoolBase.setLoginTimeout`). 즉 **30000ms → 30초**였던 JDBC 로그인 타임아웃이 **1000ms → 1초**가 된다(`DriverDataSource` 는 이를 `DriverManager` 전역 static 에 반영한다).
-
-그리고 풀 초기화는 fail-fast 다(`HikariConfig.initializationFailTimeout=1` 기본). 첫 물리 커넥션을 1초 안에 못 잡으면 `PoolInitializationException` → 컨텍스트 기동 실패 → **컨테이너 크래시루프 → 런 전체 무효**다. 위험을 키우는 조건:
-
-- `minIdle` 미설정 시 `maxPoolSize` 와 같아진다 → `DB_POOL_SIZE=30` × (orderapi 4 + userapi 2 replicas) = **180 커넥션이 기동 직후 동시에** 채워진다.
-- compose 의 healthcheck `mysqladmin ping` 은 mysqld 워밍업 완료를 보장하지 않는다 → `service_healthy` 만으로는 "1초 안에 로그인 완료"가 보장되지 않는다.
-- T2 는 런 도중 `mysql-order` 를 stop/start 한다 → 복구 직후 크래시 리커버리 구간에도 같은 1초 제한이 걸린다.
-
-> **필수 확인**: `up -d` 직후 아래로 6개 앱 컨테이너가 전부 정상 기동했는지 본다(실행 절차 3단계에 포함).
->
-> ```bash
-> docker compose -f docker-compose.qa.yml logs orderapi userapi \
->   | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
-> ```
->
-> `PoolInitializationException` 이 보이거나 `Start completed` 가 6개(orderapi 4 + userapi 2) 미만이면 `DB_CONN_TIMEOUT_MS=2000` 으로 올려 다시 띄운다 — `10 × 2000 = 20s < 21s` 라 **T2 재현 조건은 그대로 만족**하면서 로그인 타임아웃만 2초로 완화된다.
+| 변수                   | 기본값                | 의미                                               | 사용 목적                                                                                                                     |
+| ---------------------- | --------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `ORDERAPI_REPLICAS`  | `4`                 | orderApi 인스턴스 수                               | 인스턴스 수를 늘려 병렬 처리에 대한 장애(2,5)를 재현                                                                          |
+| `USERAPI_REPLICAS`   | `2`                 | userApi 인스턴스 수 (SAGA 결제 컨슈머 처리량 상한) | 인스턴스 수를 늘려 병렬 처리에 대한 장애(4, 5)를 재현                                                                         |
+| `DB_POOL_SIZE`       | `30`                | HikariCP`maximumPoolSize` (양 서비스 공통)       | connection timeout까지 대기하느라 커넥션이 고갈되는 현상을 제거                                                               |
+| `DB_CONN_TIMEOUT_MS` | `1000` (하한 250ms) | HikariCP`connectionTimeout`(ms)                  | T2 재현 (**10 × connectionTimeout**이 DB 중단 시간보다 짧아야 재시도가 소진되고 **이벤트 영구 유실**이 발생 ) |
+| `ORDER_TARGET`       | `100000`            | k6 목표 주문 수                                    | 목표 주문수에 도달할 때까지 시나리오 진행                                                                                     |
+| `ARRIVAL_RATE`       | `200`               | k6 도착률(RPS)                                     | 서버에 지속적 요청 부하를 생성                                                                                               |
+| `RICH_POOL`          | `300`               | 시드 고객 풀 크기                                  | 시나리오 참여 대상 고객수 (동시사용자수 X)                                                                                    |
+| `RUN_LABEL`          | `unknown`           | 산출물 파일명 접두어                               |                                                                                                                               |
 
 ## 실행
 
@@ -116,25 +78,6 @@ cd qa/02-consistency
 docker compose -f docker-compose.qa.yml build    # 이미지 재빌드
 ```
 
-> **태그 세대 주의**: `v1` 은 구 하네스(T2 미발화 · 폴트 귀속 계수 없음 · N 산식 이중 계상) 시점의 control 이다.
-> 현재 하네스로 측정하려면 반드시 **`v2`** 를 쓴다. `v1` 은 과거 측정의 재현용으로만 남겨둔다.
->
-> **arm 전환 시 재빌드를 피하려면** 양 arm 이미지를 미리 구워 태그해 두고 `:latest` 로 승격만 하면 된다.
-> ADR-008 이 요구하는 interleaved 반복(T→C→T→C…)은 매번 재빌드하면 비현실적이다:
->
-> ```bash
-> git checkout v2   && docker compose -f docker-compose.qa.yml build orderapi userapi
-> docker tag consist-orderapi consist-orderapi:c && docker tag consist-userapi consist-userapi:c
-> git checkout main && docker compose -f docker-compose.qa.yml build orderapi userapi   # 방어 브랜치
-> docker tag consist-orderapi consist-orderapi:t && docker tag consist-userapi consist-userapi:t
->
-> # 이후 런 직전에 승격만 (eureka/gateway 는 arm 간 동일해 재빌드 불필요)
-> docker tag consist-orderapi:t consist-orderapi:latest && docker tag consist-userapi:t consist-userapi:latest
-> ```
->
-> QA 하네스는 양 arm 바이트 동일해야 하므로, 하네스를 고치면 **반드시 양 브랜치에 같은 커밋을 반영**하고
-> `git diff --stat <control> <treatment> -- qa/02-consistency/` 가 비는지 확인할 것.
-
 2. 통합 시나리오 실행전 스모크 테스트 — 빌드/세팅 정상동작 확인
 
 results/$LABEL-verify.txt 의 N 값이 판정기준에 맞음을 확인.
@@ -146,16 +89,13 @@ export DB_CONN_TIMEOUT_MS=1000  # T2 재현용 (기본값과 동일 — 값을 �
 
 # 스택 기동
 docker compose -f docker-compose.qa.yml down -v --remove-orphans
-docker compose -f docker-compose.qa.yml up -d \
-    mysql-user mysql-order redis kafka eureka userapi orderapi gateway db-seed
+docker compose -f docker-compose.qa.yml up -d --wait \
+    mysql-user mysql-order redis kafka eureka userapi orderapi gateway
+docker compose -f docker-compose.qa.yml up -d db-seed
 
 # 시드 + 레지스트리 전파 대기
 docker compose -f docker-compose.qa.yml wait db-seed
-sleep 60                                           
-
-# ★ 앱 기동 확인 (DB_CONN_TIMEOUT_MS 의 로그인 타임아웃 부작용 — 아래 '부작용' 절 참고)
-docker compose -f docker-compose.qa.yml logs orderapi userapi \
-    | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
+sleep 60                                 
 
 # 카오스 없이 작은 부하만
 RUN_LABEL=$LABEL ORDER_TARGET=2000 ARRIVAL_RATE=50 \
@@ -177,13 +117,13 @@ docker compose -f docker-compose.qa.yml down -v
 | 무방어 (C-smoke) | > 0 (재전송 수) | 0             | 0                 |
 
 > 무방어 버전은 재전송 시나리오(2%)가 중복 주문을 만들어 v1>0 이 정상
->
-> **`v3a`는 `DB_CONN_TIMEOUT_MS` 의 가드 지표이기도 하다.** 스모크는 카오스가 없으므로 T2 가 발화할 수 없다 — 그럼에도 `v3a > 0` 이면 평상시 부하만으로 커넥션 획득이 타임아웃해 이벤트가 드롭되고 있다는 뜻이니, `DB_CONN_TIMEOUT_MS` 를 올려(2000 → 5000) `v3a=0` 을 회복한 뒤 본 런으로 넘어간다.
 
-4. 시나리오 실행 1)~8). (라벨만 바꿔가며 반복 - 무방어 `C-run1`, `C-run2` … / 방어 `T-run1` …).
+3. 시나리오 실행
+
+라벨만 바꿔가며 반복 - 무방어 `C-run1`, `C-run2` … / 방어 `T-run1` …
 
 ```bash
-LABEL=C-run1      
+LABEL=C-run1  
 export ORDERAPI_REPLICAS=4      # compose deploy.replicas 로 주입
 export DB_CONN_TIMEOUT_MS=1000  # HikariCP connectionTimeout — T2(10회 재시도 후 드롭) 재현 조건
 
@@ -191,24 +131,17 @@ export DB_CONN_TIMEOUT_MS=1000  # HikariCP connectionTimeout — T2(10회 재시
 docker compose -f docker-compose.qa.yml down -v --remove-orphans
 
 # 2) QA 스택 기동 (k6 제외)
-docker compose -f docker-compose.qa.yml up -d \
-    mysql-user mysql-order redis kafka eureka userapi orderapi gateway db-seed
+docker compose -f docker-compose.qa.yml up -d --wait \
+    mysql-user mysql-order redis kafka eureka userapi orderapi gateway
+docker compose -f docker-compose.qa.yml up -d db-seed
 
 # 3) 시드 + 레지스트리 전파 대기
 docker compose -f docker-compose.qa.yml wait db-seed
-sleep 60                                           
-
-# 3-1) ★ 앱 기동 확인 — DB_CONN_TIMEOUT_MS 가 JDBC 로그인 타임아웃까지 낮추므로
-#      풀 초기화(fail-fast)가 실패해 크래시루프에 빠지면 런 전체가 무효가 된다.
-#      'Start completed' 가 6개(orderapi 4 + userapi 2) 미만이거나 PoolInitializationException 이
-#      보이면 DB_CONN_TIMEOUT_MS=2000 으로 올리고 1) 부터 다시. (10×2000=20s<21s 라 T2 재현은 유지)
-docker compose -f docker-compose.qa.yml logs orderapi userapi \
-    | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
-docker compose -f docker-compose.qa.yml ps orderapi userapi
+sleep 60                                 
 
 # 4) 주변 장애 주입 스케줄 실행
 ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
-CHAOS_PID=$!                                
+CHAOS_PID=$!                      
 
 # 5) k6 셸 진입
 RUN_LABEL=$LABEL ORDER_TARGET=100000 ARRIVAL_RATE=200 \
@@ -219,7 +152,7 @@ k6 run /scripts/load-test-consistency.js
 exit
 
 # 7) 카오스 종료 → 비동기 흐름 종료 대기 → 검증
-kill $CHAOS_PID 2>/dev/null                 
+kill $CHAOS_PID 2>/dev/null       
 bash quiescence-gate.sh                                 # 비동기 흐름 종료 대기
 RUN_LABEL=$LABEL bash verify-consistency.sh             # 판정 결과 확인
 
@@ -233,10 +166,6 @@ docker compose -f docker-compose.qa.yml down -v
 ./aggregate-runs.sh C           # 무방어 부랜치
 ./aggregate-runs.sh T           # 방어 브랜치
 ```
-
-> 반복적으로 시나리오를 돌림으로써 현재 컴퓨터의 상태별 예외 상황에 대한 오차를 줄임
->
-> ⚠️ **표본 혼입 주의**: `C-run1`~`C-run3` · `T-run1`~`T-run2` · `T-noT4` 는 `DB_CONN_TIMEOUT_MS` 도입 **이전**(= HikariCP 기본 30000ms)에 측정된 것이라 T2 가 발화하지 않은 런이다. `aggregate-runs.sh` 는 `<PREFIX>-run*` 라벨을 무조건 긁어 중앙값을 내므로, 새 설정으로 다시 돌린 런을 같은 `runN` 번호 체계에 이어 붙이면 조건이 다른 표본이 섞인다. 새 설정으로는 **양 arm 을 처음부터 다시 측정**하고, 기존 결과 파일은 별도 보관하거나 라벨 접두를 분리할 것.
 
 ## 통합 시나리오 구성 (기본 10만 건)
 
