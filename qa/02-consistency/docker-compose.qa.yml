@@ -191,6 +191,25 @@ services:
       mysql-user: { condition: service_healthy }
       kafka: { condition: service_healthy }
       eureka: { condition: service_healthy }
+    # ★ 예기치 못한 사망만 자가 복구시킨다 — 카오스는 건드리지 않는다.
+    #   Docker 는 `docker stop` 뿐 아니라 `docker kill` 도 "수동 정지"로 표시하므로 restart 정책이 발동하지 않는다.
+    #   → T1(kill 후 T1_DOWN_S 뒤 start) · T4(stop orderapi) · T2(stop mysql-order) 의 다운타임은 그대로 유지되고,
+    #     기동 실패·OOM 등 의도치 않은 종료만 재시작된다. 이게 없으면 죽은 인스턴스가 Exited 로 남는데
+    #     gateway·db-seed 의 depends_on: service_started 는 그대로 통과해, 인스턴스가 조용히 줄어든 채
+    #     런이 진행되고 ②④ 발화 병렬도가 설계값과 달라진다(산출물에는 흔적이 남지 않는다).
+    restart: unless-stopped
+    # ★ 기동 실패를 조용히 넘기지 않기 위한 라이브니스 체크 — `up -d --wait` 로 인스턴스 수를 보장한다.
+    #   ★ -f 를 쓰지 않는다: 확인 대상은 엔드포인트의 정상 동작이 아니라 "컨텍스트가 살아 있는가"다.
+    #     Spring Boot 는 모든 싱글턴 초기화 후에 톰캣을 띄우므로(finishRefresh) 풀 초기화·Flyway 실패 시
+    #     포트 자체가 열리지 않는다. 따라서 401/404 응답도 생존 증거로 충분하다.
+    #   ★ actuator /health 를 쓰지 않는 이유: 기본 구성의 db·redis·kafka 인디케이터가
+    #     T2/T3/T4 카오스 구간마다 DOWN 을 만들어 런 내내 unhealthy 로 뒤집힌다.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sS http://localhost:8080/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 90s          # Flyway + Eureka 등록까지의 여유. 이 구간의 실패는 retries 에 세지 않는다.
     deploy:
       # ★ SAGA 결제 컨슈머가 파이프라인 상한이다: 1인스턴스면 order-created 4파티션이 전부
       #   한 컨슈머에 배정돼 드레인이 ~29/s 에 묶이고(실측 lag 26k), 정착에 부하시간의 4배가 든다.
@@ -236,6 +255,16 @@ services:
       redis: { condition: service_healthy }
       kafka: { condition: service_healthy }
       eureka: { condition: service_healthy }
+    # ★ userapi 와 동일 (상세 근거는 userapi 쪽 주석).
+    #   여기는 4 replicas 라 한 대만 죽어도 ② 재고 경합 병렬도가 4→3 으로 떨어진다 — 조용한 무효 런의 주 발생원.
+    #   T1 이 `docker kill` 로 죽이는 대상이 바로 이 서비스지만, kill 은 수동 정지로 취급돼 재시작되지 않는다.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sS http://localhost:8080/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 90s
     deploy:
       replicas: ${ORDERAPI_REPLICAS:-4}   # ADR-008 명세 4인스턴스. --scale 대신 env 주입 —
                                           # k6 를 별도 `docker compose run` 으로 부를 때 1 로 리셋되지 않는다.
