@@ -6,19 +6,22 @@
 # ① 멱등성 위반은 orders.idempotency_key(V6, UNIQUE 아님) 단위로 정확히 센다 — 같은 키로 2건 이상
 #   만들어졌으면 초과분이 위반이다. k6 는 판정 불가(타임아웃 재시도는 양쪽 응답이 status 0).
 #
-# 출력: 9개 체크의 위반 수(행/단위/원) + 총수 N(집계 KPI) + 돈 보존 누수(원). results/<RUN_LABEL>-verify.txt.
+# 출력: 9개 불변식 체크(진단) + 장애별 위반 ①–⑤(건) + 총 위반 건수 N(= ①+②+③+④+⑤, 집계 KPI)
+#   + 돈 보존 누수(원). results/<RUN_LABEL>-verify.txt.
 #   PASS/FAIL 로 합·불을 찍지 않는다 — 값 그대로 보고하고, arm 간 비교(N(control) → r(treatment))는
 #   aggregate-runs.sh 가 중앙값·범위로 한다 (ADR-008 §재현 하네스 4 점추정 금지).
+#   ★ N 은 재정의됐다(구산식 = 불변식 잔여의 행/수량/주문 혼합 합 → 현행 = 장애별 위반 건수 합).
+#     기존 20런 리포트의 N 은 구산식 값 — 직접 비교 금지.
 #
 # ★ T4 거짓 PASS 주의: "outbox 미발행=0"은 sent_at IS NULL 만 세므로 kafka 로그 전소(T4) 시 이미 sent 표기라
 #   손실을 놓친다 → T4 는 돈 보존(v3d)·PENDING/PAID 잔여(v3a) 로만 잡히는 은닉 손실이다.
 #   (아래 "폴트 귀속" 섹션의 a_T2T4 가 이 사각지대를 sent_at NOT NULL ∖ processed_events 로 메운다.)
 #
 # ---------------------------------------------------------------------------
-# [폴트 귀속(참고) 섹션] — 위 9개 체크 뒤에 덧붙는 원인 추적용 계수. 판정하지 않는다.
-#   목적: 잔여(N/r)가 "어느 장애에서 왔는지"를 DB 지문으로 개별 귀속한다.
-#   ★ N 산식과 aggregate-runs.sh 파싱 라인은 이 섹션과 무관하다 — 건드리지 않았다.
-#     새 라인은 `집계 KPI` / `돈 보존 누수(원) = ` 두 토큰을 절대 쓰지 않는다(오매칭 방지).
+# [장애별 계수·폴트 귀속 섹션] — 위 9개 체크 뒤에 덧붙는다.
+#   목적: 장애별 위반 계수(d3p/d3r/d4b/d5b → N 의 성분)와 원인 귀속 참고값(a_*, o_L* — N 불포함).
+#   ★ aggregate-runs.sh 파싱 토큰: `총 위반 건수` / `장애별 위반(건)` / `돈 보존 누수(원) = `.
+#     다른 echo 라인에서 이 토큰들을 절대 쓰지 않는다(오매칭 방지).
 #
 #   주변 장애: a_T1 (CONFIRMED 인데 환불 = 무에서 돈 창조) / a_T3 (= v1 재사용) / a_T2T4 (발행 후 미처리)
 #   의도 장애: d1 (= v1 재사용) / d2 (낙관적 락 충돌 환불) / d3 (재고 부족 환불) / d4 (@Version 존재 확인) / d5 (참고값)
@@ -126,20 +129,17 @@ money_leak_abs=$(absn "$money_leak")
 status_dist=$(q_order "SELECT status, COUNT(*) FROM orders WHERE ($SCOPE_O) GROUP BY status;" | tr '\n' ' ')
 hot_version=$(n "$(q_order "SELECT version FROM product_item WHERE id=$HOT_ID;")")
 
-# ---- 집계 N (행/단위 위반 총수; ① 포함) ----
-# ★ v2b + v2c 를 더하면 초과판매가 이중 계상된다 — 재고가 0 으로 클램프되는 조건에서
-#   v2b = |차감량 − CONFIRMED수량| = |init − 0 − confirmed| = confirmed − init = v2c 가 구조적 항등이 된다.
-#   실측: control 10/10 런 전부 v2b == v2c (91/108/105/98/110/109/122/115/113/120).
-#   treatment 는 v2c=0 이라 영향이 없으므로 이 이중 계상은 control 만 부풀려 arm 배율을 편향시킨다
-#   (실측 배율 4.17 → 보정 후 3.61).
-#   둘은 같은 초과판매를 다른 각도로 본 것이므로 max 로 합친다 — 두 신호를 다 살리되 한 번만 센다.
-#   (v2a·v2b·v2c 개별값은 위 출력에 그대로 남으므로 정보 손실은 없다.)
+# ---- v1n: ① 의 숫자값 (n/a 강등 시 0) — 아래 총 위반 건수 N 의 ① 성분 ----
+# ★ 총 위반 건수 N 은 장애별 계수(d3p/d3r/d4_chain/d5b)가 전부 계산된 뒤, 파일 하단에서 합산한다.
+#   구산식 N = v1 + v2a + max(v2b,v2c) + v3a + v3b + v3c + v3e 은 삭제했다 —
+#   행/수량/주문이 섞인 규모 지표였고 ④(원장 끊김)·⑤(중복 처리)의 피해가 사실상 빠져 있었다
+#   (④ 는 v3e 뿐인데 구조적 0, ⑤ 는 이중 결제 5만 건대가 v3a 일부로만 반영).
+#   기존 20런 리포트(MEASUREMENT_REPORT.md)의 N 은 구산식 값이므로 새 N 과 직접 비교하면 안 된다.
 v1n=$([ "$v1" = "n/a" ] && echo 0 || echo "$v1")
-v2max=$(( v2b > v2c ? v2b : v2c ))
-N=$(( v1n + v2a + v2max + v3a + v3b + v3c + v3e ))
 
 # =============================================================================
-# 폴트 귀속(참고) — 여기부터는 N 에 절대 더하지 않는다. 판정도 하지 않는다.
+# 장애별 계수·폴트 귀속 — d3p/d4b/d5b/미보상은 총 위반 건수 N 의 성분이 되고,
+# a_T1/a_T3/a_T2T4/o_L* 는 근사 귀속 참고값이다(판정 아님, N 에 불포함).
 # =============================================================================
 
 # ---- a_T1: CONFIRMED 인데 환불된 주문 (재고예약 커밋 ↔ 마커 커밋 창 파열; T1 이 주 원인) ----
@@ -305,6 +305,41 @@ d1="$v1n"
 d2=$(n "$(q_user_u "SELECT COUNT(*) $CBH_SCOPE AND h.description LIKE '%reason=재고 동시성 충돌%';")")
 d3=$(n "$(q_user_u "SELECT COUNT(*) $CBH_SCOPE AND h.description LIKE '%reason=상품 아이템의 수량이 부족합니다.%';")")
 
+# ---- d3p: ③ 재고소진 — 발행측 계수 (★ arm 중립. d3 의 대조군) ----
+# d3 는 '환불 이력'을 세므로 control 에서 구조적으로 0 이다(RefundConsumer 본문이 비어 이력이 안 생김).
+# 그런데 그 환불을 요청하는 이벤트(StockReservationFailed)를 발행하는 StockConsumer 는 arm diff 6파일 밖이라
+# 양 arm 동일 코드다 → control 도 SRF 는 정상 발행한다. 소비만 안 할 뿐이다.
+# 따라서 발행측(outbox payload)을 보면 control 에서도 ③ 를 관측할 수 있다.
+#   control    : 환불이 0 이므로 이 값이 곧 ③ 의 위반 건수(= 미보상 주문 수)
+#   treatment  : ③ 의 발생량. d3 와 대조하면 보상률이 나온다 (d3p == d3 이면 100% 보상)
+#
+# ★ reason 필터가 필수다 — SRF 는 재고 부족 전용이 아니라 사유가 다섯 갈래다:
+#     상품 아이템의 수량이 부족합니다. / 허용되지 않은 주문 상태 전이입니다. / 재고 동시성 충돌
+#     / 주문을 찾을 수 없습니다. / 해당하는 아이템을 찾을 수 없습니다.
+#   특히 '허용되지 않은 주문 상태 전이입니다.' 는 이미 CONFIRMED 인 주문에 PaymentDeducted 가 재도착한
+#   경우라 돌려줄 초과분이 없는 '헛 요청' 이다. 필터 없이 세면 이게 섞여 위반 건수가 부풀어 오른다.
+# ★ DISTINCT orderId 가 필수다 — 같은 주문의 PaymentDeducted 가 재처리되면 SRF 가 매번 새로 발행된다
+#   (StockConsumer 가 호출마다 UUID.randomUUID()). control 은 재처리가 많아 행 수가 부풀므로
+#   행 단위로 세면 arm 비교가 불공정해진다. 주문 단위로 묶어야 그 편향이 사라진다.
+# ★ 한글 리터럴이라 q_order_u(charset 명시) 필수 — q_order 로 실행하면 조용히 0 건 매칭된다.
+# ★ 사유 분포(srf_mix)를 함께 낸다. d3p=0 일 때 '재고 소진이 없었다'인지 '쿼리가 깨졌다'인지 구분하는 용도다
+#   (분포가 '-' 면 JSON 경로/charset 이 깨진 것 — 무음 0 을 위반 없음으로 읽지 말 것).
+#
+# ★ d3 와 단위가 다르다 — d3 는 환불 '행 수', d3p 는 '주문 수'다. 직접 빼면 안 된다.
+#   대조하려면 환불 이력도 주문 단위로 세야 하므로 d3r 을 따로 낸다(description 에 orderId 가 박혀 있다:
+#   "주문 실패 환불 (orderId=123, reason=...)" — RefundConsumer.process).
+#   세 값이 각각 다른 질문에 답한다:
+#     d3p        갚아야 할 주문 수        (재고 소진으로 실패)
+#     d3r        실제로 갚은 주문 수
+#     d3         갚은 횟수                 (행 수)
+#   → 미보상 = d3p − d3r  (control 은 d3p 전량, treatment 는 0 이 기대)
+#   → 과보상 = d3  − d3r  (같은 주문에 SRF 가 여러 번 발행되면 dedup 은 eventId 기준이라 각각 환불된다.
+#                          이것이 a_T1(CONFIRMED 인데 환불 = 공짜 주문)의 기전 중 하나다.)
+d3p=$(n "$(q_order_u "SELECT COUNT(DISTINCT payload->>'\$.orderId') FROM outbox_events WHERE topic='stock-reservation-failed' AND payload->>'\$.reason' = '상품 아이템의 수량이 부족합니다.';")")
+d3r=$(n "$(q_user_u "SELECT COUNT(DISTINCT SUBSTRING_INDEX(SUBSTRING_INDEX(h.description,'orderId=',-1),',',1)) $CBH_SCOPE AND h.description LIKE '%reason=상품 아이템의 수량이 부족합니다.%';")")
+srf_mix=$(q_order_u "SET SESSION group_concat_max_len=1048576; SELECT COALESCE(GROUP_CONCAT(CONCAT(r,'=',c) ORDER BY c DESC SEPARATOR '|'),'-') FROM (SELECT payload->>'\$.reason' r, COUNT(DISTINCT payload->>'\$.orderId') c FROM outbox_events WHERE topic='stock-reservation-failed' GROUP BY 1) t;")
+[ -z "$srf_mix" ] && srf_mix="-"
+
 # ---- d4: @Version 방어 존재 확인용 (★ Lost Update 탐지기가 아니다) ----
 # 기대식: changeBalance 1회 = history 행 +1 && customer.setBalance 로 dirty update = version +1.
 #   시드는 history 1행을 raw SQL 로 넣고 customer.version=0 이므로 기대 version = (행수 − 1).
@@ -338,6 +373,78 @@ d5_user=$(q_user  "SET SESSION group_concat_max_len=1048576; SELECT COALESCE(GRO
 [ -z "$d5_order" ] && d5_order="-"
 [ -z "$d5_user" ]  && d5_user="-"
 
+# ---- d5b: ⑤ 이벤트 중복 처리 — 주문 단위 정확 계수 (★ arm 중립. o_L1 순합의 대체) ----
+# o_L1 = s_oc − s_pd − s_pf 는 '순합'이라 유실(양수)과 중복(음수)이 서로 상쇄한다.
+#   예) 중복 60,000 + 유실 8,000 → o_L1 = −52,000 으로 읽히고 유실 8,000 은 통째로 보이지 않는다.
+#   즉 |o_L1| 은 중복의 '하한'일 뿐이다.
+# 주문 단위로 묶으면 상쇄가 사라진다: PaymentConsumer 는 OrderCreated 1건을 처리할 때마다
+# PaymentDeducted 를 정확히 1행 발행하므로(PaymentConsumer.process), 같은 orderId 로 2행 이상이면
+# 그 초과분이 곧 'OrderCreated 가 몇 번 더 처리됐는가' 다. 유실은 이 값에 기여하지 않는다.
+#
+# ★ '중복 처리' 계수이지 '중복 배달' 계수가 아니다.
+#   outbox_events 는 발행을 기록하지 배달을 기록하지 않는다. treatment 의 0 은 '배달이 없었다'가 아니라
+#   '처리가 없었다'는 뜻이다 — 배달 자체는 양 arm 에 동일하게 일어나고 dedup 이 처리 단계에서 막는다.
+#   리포트 문구를 '중복 배달 N → 0' 으로 쓰면 Kafka 가 arm 별로 다르게 동작한 것처럼 오독된다.
+# ★ ⑤ 의 역순 축은 별도 계수기를 두지 않는다. 순서 역전은 어느 주문이 한정 재고를 획득하느냐(분배)를
+#   바꿀 뿐 위반 총량을 바꾸지 않고, 이를 거부하는 Order 상태 전이 가드(markPaid/markConfirmed/markFailed)는
+#   arm diff 6파일 밖이라 양 arm 동일하다 → N→r 에 기여하지 않는다.
+#   (역순이 중복 없이도 발생한다는 점은 별개다 — 형제 이벤트가 파티션 분산으로 뒤집히는 경로가 있다.
+#    메시지 키가 eventId(UUID) 라 같은 고객의 두 주문이 다른 파티션에 떨어지기 때문이다.)
+# ★ outbox_events 는 런 스코프 컬럼이 없어 전역 계수다. down -v 전까지 런 간 누적된다.
+# ---- 부당 환불: 갚으면 안 되는데 갚은 총 건수 (과보상의 두 형태를 합산) ----
+# 과보상은 모양이 둘이고 서로 다른 지표가 하나씩만 잡는다:
+#   A) 실패한 주문에 두 번 이상 갚음  → (d3 갚은 횟수 − d3r 갚은 주문 수) 가 잡는다. a_T1 은 못 잡는다(확정 주문이 아니므로)
+#   B) 확정된 주문에 갚음(= 공짜 주문) → a_T1 이 잡는다. 환불이 1회뿐이라 위 차분은 0 이라 못 잡는다
+# 둘의 단순 합이 곧 '부당 환불 행 수' 이고 이중 계상이 없다:
+#   정상(실패 주문 1회 환불)   d3=1 d3r=1 a_T1=0 → 0+0 = 0
+#   A(실패 주문 2회 환불)      d3=2 d3r=1 a_T1=0 → 1+0 = 1   (두 번째가 부당)
+#   B(확정 주문 1회 환불)      d3=1 d3r=1 a_T1=1 → 0+1 = 1   (그 환불 자체가 부당)
+#   A+B(확정 주문 2회 환불)    d3=2 d3r=1 a_T1=1 → 1+1 = 2   (두 번 다 부당)
+# ★ 이 값은 방어 arm 전용 관측값이다 — control 은 환불을 아예 안 하므로 구조적으로 0 이고,
+#   "방어를 켰기 때문에 생기는 위반"이라 N→r 처럼 감소를 보이는 지표가 아니다. KPI 에 합산하지 말 것.
+# ★ 금액(v3d 돈 누수)에서는 이 성분이 음의 방향으로 상쇄된다 — 성분별 크기는 이 건수로만 읽힌다.
+dup_refund=$(( d3 > d3r ? d3 - d3r : 0 ))
+if [ "$a_t1" = "n/a" ]; then
+    bad_refund="n/a (공짜주문 계수 불가)"
+else
+    bad_refund=$(( dup_refund + a_t1 ))
+fi
+
+d5b=$(n "$(q_user "SELECT COALESCE(SUM(c-1),0) FROM (SELECT payload->>'\$.orderId' oid, COUNT(*) c FROM outbox_events WHERE topic='payment-deducted' GROUP BY 1 HAVING COUNT(*) > 1) t;")")
+d5b_orders=$(n "$(q_user "SELECT COUNT(*) FROM (SELECT payload->>'\$.orderId' oid FROM outbox_events WHERE topic='payment-deducted' GROUP BY 1 HAVING COUNT(*) > 1) t;")")
+
+# ---- hop1 유실: o_L1 순합의 나머지 절반 (중복은 d5b, 유실은 여기) ----
+# o_L1 = s_oc − s_pd − s_pf 는 행 수 차분이라 유실(양수)과 중복(음수)이 한 숫자에서 상쇄된다.
+#   예) 중복 60,000 + 유실 8,000 → o_L1 = −52,000 으로 읽히고 유실 8,000 은 통째로 사라진다.
+# 주문 단위로 보면 두 성분이 갈린다:
+#   중복 = 같은 orderId 로 payment-deducted 가 2행 이상인 초과분  → d5b
+#   유실 = order-created 에는 있는데 하류(pd ∪ pf)에 없는 주문 수 → o_l1_loss (아래)
+#
+# ★ 교차 DB 조인이 필요 없다. PaymentConsumer 는 OrderCreated 를 처리해야만 pd/pf 를 발행하므로
+#   {pd,pf 의 orderId} ⊆ {oc 의 orderId} 가 인과적으로 보장된다. 부분집합이면 차집합의 크기는
+#   원소 수의 차와 같으므로, 양 DB 에서 DISTINCT 개수만 각각 뽑아 빼면 된다.
+# ★ sent_at IS NOT NULL 로 거른다 — 유실은 '발행됐는데 하류가 안 생긴 것'이지 미발행 backlog 가 아니다.
+#   정착 게이트가 미발행 0 을 보장하므로 실측상 차이는 없지만 의미를 명확히 한다.
+# ★ 음수가 나오면 부분집합 가정이 깨진 것이다(하류 orderId 가 상류보다 많음) → 데이터 이상 신호이므로
+#   0 으로 clamp 하지 않고 그대로 낸다.
+oc_orders=$(n "$(q_order "SELECT COUNT(DISTINCT payload->>'\$.orderId') FROM outbox_events WHERE topic='order-created' AND sent_at IS NOT NULL;")")
+dn_orders=$(n "$(q_user  "SELECT COUNT(DISTINCT payload->>'\$.orderId') FROM outbox_events WHERE topic IN ('payment-deducted','payment-failed') AND sent_at IS NOT NULL;")")
+o_l1_loss=$(( oc_orders - dn_orders ))
+
+# ---- N: 총 위반 건수 = 의도된 장애 ①–⑤ 위반 건수 합산 (전부 '건' 단위) ----
+#   ① v1n       같은 멱등키 주문 초과분              (주문 건)
+#   ② v2c       초과판매량 — k6 hot 주문이 전량 1개씩이라(count:1) 수량 = 주문 건과 동치
+#   ③ 미보상    갚아야 할 주문 − 실제로 갚은 주문    (주문 건)
+#   ④ d4_chain  잔액 원장 체인 끊김                  (건 — 끊긴 링크 1개 = 유실된 갱신 1건)
+#   ⑤ d5b       결제 완료 이벤트 중복 발행 초과분    (건 — 초과 1행 = 중복 처리 1건)
+# ★ 계수 기준은 "위반된 불변식" 이다 — 한 원인이 두 불변식을 깨면 각각 센다
+#   (예: ⑤ 의 동시 재처리가 재고를 이중 차감하면 ⑤ 1건 + ② 1건. 서로 다른 피해다).
+# ★ 불변식 잔여 체크(v2a/v3a/v3b/v3c/v3e)는 N 에 더하지 않는다 — ③ 미보상이 v3a 의 부분집합이라
+#   더하면 이중 계상이고, 단위도 섞인다. v* 는 진단·정착 확인용으로 계속 출력만 한다.
+# ★ 음수 방지 clamp 는 ③ 에만 건다(부분집합 가정 위반 신호는 hop1 유실 쪽에서 이미 낸다).
+unrec=$(( d3p > d3r ? d3p - d3r : 0 ))
+N=$(( v1n + v2c + unrec + d4_chain + d5b ))
+
 # 수치 우측정렬 (숫자는 ASCII 라 바이트 폭 = 표시 폭)
 num() { printf '%9s' "$1"; }
 
@@ -360,14 +467,20 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "   v3d 돈 보존 누수                            : $(num "$money_leak") 원  ((초기잔액합 $bal_init − 현재 $bal_now) − CONFIRMED결제 $confirmed_total)"
     echo "   v3e 음수 잔액 행                            : $(num "$v3e") 행"
     echo ""
-    echo "집계 KPI(위반 행/단위 총수, ① 포함) N = $N"
+    echo "장애별 위반(건): ①=$(num "$v1n") ②=$(num "$v2c") ③=$(num "$unrec") ④=$(num "$d4_chain") ⑤=$(num "$d5b")"
+    echo "총 위반 건수(장애①-⑤ 합산) N = $N"
     echo "돈 보존 누수(원) = $money_leak  (부호: +면 소실/은닉, −면 무에서 창조)"
+    echo "   ※ 계수 기준은 '위반된 불변식' — 한 원인이 두 불변식을 깨면 각각 센다(⑤ 동시 재처리 → ⑤ 1 + ② 1)."
+    echo "      ② 는 k6 hot 주문이 전량 1개씩(count:1)이라 수량 = 주문 건과 동치."
+    echo "      불변식 잔여 체크(v2a/v3a/v3b/v3c/v3e)는 진단용 — ③ 미보상 ⊆ v3a 라 N 에 더하면 이중 계상."
+    echo "   ※ 구산식 N(= v1+v2a+max(v2b,v2c)+v3a+v3b+v3c+v3e, 단위 혼합)은 삭제됨 —"
+    echo "      기존 20런 리포트의 N 은 구산식 값이므로 이 N 과 직접 비교 금지."
     echo ""
     echo "※ 값만 보고한다 — 합·불 판정 없음. 0 = 잔여 없음."
-    echo "   arm 비교는 aggregate-runs.sh 의 중앙값·범위로: N(control) → r(treatment)."
+    echo "   arm 비교는 aggregate-runs.sh 의 중앙값·범위로: 총 위반 N(control) → r(treatment), 장애별 ①-⑤ 도 각각 대비."
     echo "   treatment 의 잔여 r>0 은 5개 방어 대상이 아닌 주변 장애 T1–T4 몫. control 은 desired 위반까지 더해 N≫r."
     echo ""
-    echo "----- 폴트 귀속(참고) — 판정 아님, 위 N 에 더하지 않음 -----"
+    echo "----- 장애별 계수·폴트 귀속 — d3p/d4b/d5b/미보상은 위 N 의 성분, a_*·o_L* 는 근사 귀속 참고값 -----"
     echo "[주변 장애 T1–T4]"
     echo "   a_T1  CONFIRMED 인데 환불된 주문         : $(num "$a_t1") 건  ${a_t1_note:+($a_t1_note)}"
     echo "         └ T1 지문(reason=허용되지 않은 주문 상태 전이입니다.) : $(num "$a_t1_sig") 행"
@@ -421,6 +534,23 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "   d3    재고 부족 환불                     : $(num "$d3") 건  (reason=상품 아이템의 수량이 부족합니다.)"
     echo "         ※ d2/d3 구분 정보는 orders.failure_reason 에 남지 않는다(상수로 덮임) — 잔액이력 description 전용."
     echo "            control(v1) 은 RefundConsumer 본문이 비어 환불 이력 자체가 없어 d2/d3 = 0 이다."
+    echo "   d3p ★ ③ 갚아야 할 주문 (arm 중립)       : $(num "$d3p") 주문  (SRF reason=수량 부족, DISTINCT orderId)"
+    echo "   d3r   ③ 실제로 갚은 주문                 : $(num "$d3r") 주문  (환불 이력의 orderId, DISTINCT)"
+    echo "         ├ 미보상 = d3p − d3r              : $(num "$(( d3p > d3r ? d3p - d3r : 0 ))") 주문   ← 갚아야 하는데 안 갚음"
+    echo "         ├ 중복환불 = d3 − d3r             : $(num "$(( d3 > d3r ? d3 - d3r : 0 ))") 회     ← 같은 주문에 두 번 이상 갚음"
+    echo "         ├ 부당환불 = 중복환불 + 공짜주문   : $bad_refund 건    ← 갚으면 안 되는데 갚은 총 건수"
+    echo "         └ SRF 사유 분포(주문 수): $srf_mix"
+    echo "         ※ d3(행 수)와 d3p(주문 수)는 단위가 달라 직접 빼면 안 된다. 대조는 d3r 로 한다."
+    echo "         ※ SRF 를 발행하는 StockConsumer 는 arm diff 6파일 밖이라 양 arm 동일 코드 →"
+    echo "            control 도 SRF 는 정상 발행한다(소비만 안 함). 그래서 control 에서도 ③ 가 관측된다."
+    echo "            control   : d3r=0 이므로 미보상 = d3p 전량 = ③ 의 위반 건수."
+    echo "            treatment : 미보상 0 이 기대. 과보상 > 0 이면 그만큼 a_T1(공짜 주문)으로 착지한다"
+    echo "                        — dedup 이 eventId 기준이라 같은 주문에 SRF 가 여러 번 발행되면 각각 환불된다."
+    echo "         ※ reason 필터가 필수다. SRF 사유는 다섯 갈래이고 '허용되지 않은 주문 상태 전이입니다.' 는"
+    echo "            이미 CONFIRMED 인 주문에 재도착한 '헛 요청'이라 환불 대상이 아니다(섞으면 위반이 부풀어 오름)."
+    echo "         ※ DISTINCT 가 필수다. 재처리마다 SRF 가 새로 발행되는데 control 이 재처리가 많아"
+    echo "            행 단위로 세면 arm 비교가 불공정해진다."
+    echo "         ※ 위 사유 분포가 '-' 이면 JSON 경로/charset 이 깨진 것이다 — d3p=0 을 '위반 없음'으로 읽지 말 것."
     echo "   d4    @Version 존재 확인용(참고)         : $(num "$d4") 명  (기대식: version = history행수 − 1, 시드 1행 제외)"
     echo "         └ 표본 (version, 행수): $d4_sample"
     echo "         ※ ★ Lost Update 탐지력이 없다 — 라벨을 '④ 의심'으로 읽지 말 것."
@@ -432,8 +562,21 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "         ※ 이쪽이 ④ 의 실제 신호다. 같은 '최신행'을 두 트랜잭션이 동시에 읽고 각각 커밋하면 링크가 끊긴다."
     echo "            control > 0 / treatment = 0 이 기대. 차(ledger_gap)≠0 은 파생 캐시(customer.balance)만 덮인 경우다."
     echo "   d5    processed_events 총 행수           : orders[$d5_order] user[$d5_user]"
-    echo "         ※ 중복 배달 횟수는 현재 계측 불가 — dedup 이 걸러낸 재배달은 DB 에 흔적을 남기지 않는다."
-    echo "            (per-fault 귀속 후속 과제. 위 행수는 '처리된 고유 이벤트 수'일 뿐 중복 횟수가 아니다.)"
+    echo "         ※ 위 행수는 '처리된 고유 이벤트 수'일 뿐 중복 횟수가 아니다. 중복 처리 계수는 아래 d5b 로 한다."
+    echo "   d5b ★ ⑤ 이벤트 중복 처리 (arm 중립)      : $(num "$d5b") 건  (중복이 난 주문 $d5b_orders 개)"
+    echo "       ★ hop1 유실 (중복과 분리)             : $(num "$o_l1_loss") 주문  (order-created $oc_orders − 하류 pd∪pf $dn_orders, DISTINCT orderId)"
+    echo "         ※ 이 둘이 o_L1($(num "$o_l1"))의 두 성분이다. o_L1 은 행 수 차분이라 유실(양수)과 중복(음수)이"
+    echo "            한 숫자에서 상쇄돼 |o_L1| 이 중복의 하한에 그치고 유실은 통째로 보이지 않는다."
+    echo "            주문 단위로 보면 상쇄가 없다 — 중복은 d5b, 유실은 위 값으로 각각 읽는다."
+    echo "         ※ 유실 계산에 교차 DB 조인이 필요 없는 이유: PaymentConsumer 는 OrderCreated 를 처리해야만"
+    echo "            pd/pf 를 발행하므로 {pd,pf 의 orderId} ⊆ {oc 의 orderId} 다. 부분집합이면 차집합 크기 ="
+    echo "            원소 수의 차이므로 양 DB 에서 DISTINCT 개수만 각각 뽑아 빼면 된다."
+    echo "            → 음수가 나오면 이 가정이 깨진 것(하류가 상류보다 많음) = 데이터 이상 신호다."
+    echo "         ※ '중복 처리' 계수이지 '중복 배달' 계수가 아니다. outbox_events 는 발행을 기록하지 배달을"
+    echo "            기록하지 않는다. treatment 의 0 은 '배달이 없었다'가 아니라 '처리가 없었다'는 뜻이다 —"
+    echo "            배달은 양 arm 에 동일하게 일어나고 dedup 이 처리 단계에서 막는다."
+    echo "         ※ ⑤ 의 역순 축은 별도 계수기를 두지 않는다. 순서 역전은 어느 주문이 한정 재고를 획득하느냐"
+    echo "            (분배)를 바꿀 뿐 위반 총량을 바꾸지 않고, 이를 거부하는 Order 상태 전이 가드는 양 arm 동일하다."
     echo "         ※ outbox_events/processed_events 는 런 스코프 컬럼이 없어 전역 계수이며 down -v 전까지 런 간 누적된다."
 } | tee "$REPORT"
 
