@@ -33,6 +33,8 @@ extract_leak() { grep -oE '돈 보존 누수\(원\) = -?[0-9]+' "$1" 2>/dev/null
 # ★ verify 의 num() 이 %8d 로 우측정렬 패딩하므로 '=' 와 숫자 사이에 공백이 들어간다 — 반드시 흡수할 것.
 extract_fault(){ grep -oE "$2=[[:space:]]*[0-9]+" "$1" 2>/dev/null | head -1 | grep -oE '[0-9]+$'; }
 extract_json() { grep -oE "\"$2\"[[:space:]]*:[[:space:]]*[0-9]+" "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
+# verify 가 '돌아간 컨테이너의 거동'으로 판정한 arm (라벨이 아님) — control|treatment|? 를 반환
+extract_arm()  { grep -oE 'arm\(실측 거동\): (control|treatment)' "$1" 2>/dev/null | grep -oE '(control|treatment)$' | head -1; }
 
 median() { printf '%s\n' "$@" | sort -n | awk '{a[NR]=$0} END{if(NR==0){print "n/a"} else if(NR%2){print a[(NR+1)/2]} else {print (a[NR/2]+a[NR/2+1])/2}}'; }
 minv()   { printf '%s\n' "$@" | sort -n | head -1; }
@@ -45,7 +47,7 @@ if [ -z "$files" ]; then
     exit 1
 fi
 
-vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=()
+vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); mismatched=()
 {
     echo "# ADR-008 정합성 측정 집계 — arm=$PREFIX (branch=$BRANCH)"
     echo ""
@@ -65,6 +67,15 @@ vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=()
         if [ -f "$k6" ]; then
             t=$(extract_json "$k6" order_target); t=${t:-"?"}
             r=$(extract_json "$k6" arrival_rate); r=${r:-"?"}
+        fi
+        # ★ arm 불일치 검출 — 라벨 접두(C/T)와 verify 가 실측한 거동이 다르면 이미지·소스 불일치다.
+        #   (arm 전환 시 이미지 재빌드가 실패했는데 이전 arm 이미지가 남아 있으면 조용히 잘못 측정된다)
+        arm=$(extract_arm "$f"); arm=${arm:-"?"}
+        expect=$([ "$PREFIX" = "C" ] && echo control || echo treatment)
+        if [ "$arm" != "?" ] && [ "$arm" != "$expect" ]; then
+            mismatched+=("$label(실측 $arm ≠ 라벨 $expect)")
+            echo "| ${label#"$PREFIX"-run} ⚠ | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $l |"
+            continue
         fi
         echo "| ${label#"$PREFIX"-run} | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $l |"
         [ "$v" != "?" ]  && vals+=("$v")
@@ -90,6 +101,13 @@ vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=()
         fi
     else
         echo "> ⟨측정전⟩ — 파싱 가능한 결과 없음. (구버전 verify 산출물은 N 토큰이 달라 전부 ? 로 제외된다)"
+    fi
+    if [ "${#mismatched[@]}" -gt 0 ]; then
+        echo ""
+        echo "> ⚠ **arm 불일치 ${#mismatched[@]}건 — 집계에서 제외됨**: ${mismatched[*]}"
+        echo "> verify 가 실행된 컨테이너의 거동(processed_events 기록 여부)으로 판정한 arm 이 라벨과 다르다."
+        echo "> arm 전환 시 이미지 재빌드가 실패했는데 이전 arm 이미지가 남아 있으면 이 일이 생긴다."
+        echo "> 해당 런은 폐기하고 이미지를 재빌드한 뒤 다시 측정할 것."
     fi
     echo ""
     echo "> KPI 는 이 arm 의 중앙값을 반대편 arm(다른 브랜치) 과 비교:"

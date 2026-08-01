@@ -456,9 +456,26 @@ N=$(( v1n + v2max + unrec + d4_chain + d5b ))
 # 수치 우측정렬 (숫자는 ASCII 라 바이트 폭 = 표시 폭)
 num() { printf '%9s' "$1"; }
 
+# ---- arm 실측 판별: 소스가 아니라 '돌아간 컨테이너의 거동'으로 arm 을 확정한다 ----
+# ★ 이미지와 소스가 어긋나도 산출물로는 구별되지 않는 사고가 실재한다 — 실제로 treatment 빌드가
+#   CRLF(gradlew) 로 실패했는데 이전 control 이미지가 남아 있어, 그대로 돌렸다면 T-run* 이 control
+#   재측정이 되고 N→r 이 1:1 로 나와 '방어 효과 없음'이라는 정반대 결론이 나올 뻔했다.
+#   .dockerignore 가 qa/ 를 제외하므로 하네스 리비전은 이미지와 인과가 없다 → 거동으로 판별해야 한다.
+# 판별 근거: processed_events 기록 여부는 ⑤ dedup(IdempotentEventHandler) 이 있어야만 생긴다.
+#   control 은 doHandle 이 processor.accept 뿐이라 양 모듈 모두 0행, treatment 는 컨슈머별로 쌓인다.
+#   보조로 Customer.@Version(hot_version 은 ProductItem 쪽) 대신 여기서는 마커 유무만 쓴다 — 가장 직접적이다.
+if [ "$p_total" -gt 0 ]; then
+    ARM_OBSERVED="treatment(방어 ON — processed_events $p_total 행)"
+else
+    ARM_OBSERVED="control(무방어 — processed_events 0 행)"
+fi
+
 REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
 {
     echo "===== 정합성 검증 ($RUN_LABEL) ====="
+    echo "arm(실측 거동): $ARM_OBSERVED"
+    echo "   ※ 라벨이 아니라 실행된 컨테이너의 거동으로 판정한다. 라벨 접두(C-/T-)와 어긋나면"
+    echo "      이미지·소스 불일치이므로 그 런은 폐기할 것 (arm 전환 시 이미지 재빌드 누락이 주 원인)."
     echo "scope: ctrich | rich=$rich_cnt | hot id=$HOT_ID init=$HOT_INIT now=$hot_now version=$hot_version"
     echo "status 분포: $status_dist"
     echo ""
