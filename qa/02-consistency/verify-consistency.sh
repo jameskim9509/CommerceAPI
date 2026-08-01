@@ -433,7 +433,7 @@ o_l1_loss=$(( oc_orders - dn_orders ))
 
 # ---- N: 총 위반 건수 = 의도된 장애 ①–⑤ 위반 건수 합산 (전부 '건' 단위) ----
 #   ① v1n       같은 멱등키 주문 초과분              (주문 건)
-#   ② v2c       초과판매량 — k6 hot 주문이 전량 1개씩이라(count:1) 수량 = 주문 건과 동치
+#   ② v2max     재고 이중 차감량 — k6 hot 주문이 전량 1개씩이라(count:1) 수량 = 주문 건과 동치
 #   ③ 미보상    갚아야 할 주문 − 실제로 갚은 주문    (주문 건)
 #   ④ d4_chain  잔액 원장 체인 끊김                  (건 — 끊긴 링크 1개 = 유실된 갱신 1건)
 #   ⑤ d5b       결제 완료 이벤트 중복 발행 초과분    (건 — 초과 1행 = 중복 처리 1건)
@@ -442,8 +442,16 @@ o_l1_loss=$(( oc_orders - dn_orders ))
 # ★ 불변식 잔여 체크(v2a/v3a/v3b/v3c/v3e)는 N 에 더하지 않는다 — ③ 미보상이 v3a 의 부분집합이라
 #   더하면 이중 계상이고, 단위도 섞인다. v* 는 진단·정착 확인용으로 계속 출력만 한다.
 # ★ 음수 방지 clamp 는 ③ 에만 건다(부분집합 가정 위반 신호는 hop1 유실 쪽에서 이미 낸다).
+#
+# ★ ② 는 v2c 가 아니라 max(v2b, v2c) 다 — v2c 단독은 재고 미소진 구간의 이중 차감을 통째로 놓친다.
+#   v2c = max(0, CONFIRMED수량 − 초기재고) 는 '재고를 넘어 판 양'이라 재고가 바닥나야만 양수가 된다.
+#   v2b = |차감량 − CONFIRMED수량| 는 '깎였어야 할 만큼 안 깎인 양' = 이중 차감으로 공짜로 나간 수량이라
+#   재고가 남아 있어도 잡힌다. 실측(C-smoke, 2천건 무카오스): 차감 166 vs CONFIRMED 180 → v2b=14, v2c=0.
+#   재고 소진 후에는 now=0 이라 v2b = |init − confirmed| = confirmed − init = v2c 로 두 값이 같아진다
+#   (구산식 주석의 구조적 항등). 따라서 max 가 두 구간을 모두 덮으면서 이중 계상도 없다.
+v2max=$(( v2b > v2c ? v2b : v2c ))
 unrec=$(( d3p > d3r ? d3p - d3r : 0 ))
-N=$(( v1n + v2c + unrec + d4_chain + d5b ))
+N=$(( v1n + v2max + unrec + d4_chain + d5b ))
 
 # 수치 우측정렬 (숫자는 ASCII 라 바이트 폭 = 표시 폭)
 num() { printf '%9s' "$1"; }
@@ -467,11 +475,12 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "   v3d 돈 보존 누수                            : $(num "$money_leak") 원  ((초기잔액합 $bal_init − 현재 $bal_now) − CONFIRMED결제 $confirmed_total)"
     echo "   v3e 음수 잔액 행                            : $(num "$v3e") 행"
     echo ""
-    echo "장애별 위반(건): ①=$(num "$v1n") ②=$(num "$v2c") ③=$(num "$unrec") ④=$(num "$d4_chain") ⑤=$(num "$d5b")"
+    echo "장애별 위반(건): ①=$(num "$v1n") ②=$(num "$v2max") ③=$(num "$unrec") ④=$(num "$d4_chain") ⑤=$(num "$d5b")"
     echo "총 위반 건수(장애①-⑤ 합산) N = $N"
     echo "돈 보존 누수(원) = $money_leak  (부호: +면 소실/은닉, −면 무에서 창조)"
     echo "   ※ 계수 기준은 '위반된 불변식' — 한 원인이 두 불변식을 깨면 각각 센다(⑤ 동시 재처리 → ⑤ 1 + ② 1)."
-    echo "      ② 는 k6 hot 주문이 전량 1개씩(count:1)이라 수량 = 주문 건과 동치."
+    echo "      ② = max(v2b,v2c) 다 — v2c 단독은 재고 미소진 구간의 이중 차감을 놓친다(v2c 는 재고가"
+    echo "      바닥나야 양수). k6 hot 주문이 전량 1개씩(count:1)이라 수량 = 주문 건과 동치."
     echo "      불변식 잔여 체크(v2a/v3a/v3b/v3c/v3e)는 진단용 — ③ 미보상 ⊆ v3a 라 N 에 더하면 이중 계상."
     echo "   ※ 구산식 N(= v1+v2a+max(v2b,v2c)+v3a+v3b+v3c+v3e, 단위 혼합)은 삭제됨 —"
     echo "      기존 20런 리포트의 N 은 구산식 값이므로 이 N 과 직접 비교 금지."
