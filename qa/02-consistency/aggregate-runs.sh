@@ -30,7 +30,8 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
 extract_N()    { grep -oE '총 위반 건수.* N = [0-9]+' "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
 extract_leak() { grep -oE '돈 보존 누수\(원\) = -?[0-9]+' "$1" 2>/dev/null | grep -oE '\-?[0-9]+$' | head -1; }
 # 장애별 위반(건): ①=.. ②=.. ... 줄에서 해당 장애의 건수 (기호는 verify 출력과 일치해야 한다)
-extract_fault(){ grep -oE "$2=[0-9]+" "$1" 2>/dev/null | head -1 | grep -oE '[0-9]+$'; }
+# ★ verify 의 num() 이 %8d 로 우측정렬 패딩하므로 '=' 와 숫자 사이에 공백이 들어간다 — 반드시 흡수할 것.
+extract_fault(){ grep -oE "$2=[[:space:]]*[0-9]+" "$1" 2>/dev/null | head -1 | grep -oE '[0-9]+$'; }
 extract_json() { grep -oE "\"$2\"[[:space:]]*:[[:space:]]*[0-9]+" "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
 
 median() { printf '%s\n' "$@" | sort -n | awk '{a[NR]=$0} END{if(NR==0){print "n/a"} else if(NR%2){print a[(NR+1)/2]} else {print (a[NR/2]+a[NR/2+1])/2}}'; }
