@@ -471,6 +471,60 @@ unrec=$(( d3p > d3r ? d3p - d3r : 0 ))
 at1_n=$([ "$a_t1" = "n/a" ] && echo 0 || echo "$a_t1")
 chaos_res=$(( (v3a > unrec ? v3a - unrec : 0) + at1_n ))
 
+# ---- VU 대조: 동시성 장애(②·④)가 어느 부하 수준에서 났는지 ----
+# k6 가 멱등키에 요청 시점의 활성 VU 수를 인코딩한다(`<uuid>-vu<N>`) → orders.idempotency_key 에 그대로 남는다.
+# 앱 스키마를 건드리지 않고 주문 단위로 부하 수준을 붙일 수 있는 유일한 경로다.
+#
+# ★ 해석 주의 — VU 는 원인이 아니라 결과일 수 있다:
+#   요청이 느려지면 k6 가 도착률(constant-arrival-rate)을 유지하려고 VU 를 늘린다. 실측 C-run1 에서
+#   평시 VU 4~10 인데 T1 구간 평균 227.8, T4 직후 305.5(최대 800=maxVUs 상한)로 튀었다.
+#   따라서 '고VU 구간에 위반이 몰렸다'는 상관이지 인과가 아니다 — 카오스가 둘의 공통 원인일 수 있다.
+#   ④ 의 실제 동시성 결정 요인은 VU 수가 아니라 같은 고객 행을 동시에 친 트랜잭션 수이고,
+#   그것은 RICH_POOL(고객 풀 크기)과 도착률이 정한다.
+# ★ 버킷으로 낸다 — VU 원값은 1~800 으로 흩어져 분포를 못 읽는다.
+VU_RX="CAST(SUBSTRING_INDEX(idempotency_key,'-vu',-1) AS UNSIGNED)"
+VU_BUCKET="CASE WHEN $VU_RX < 10 THEN '01_lt10' WHEN $VU_RX < 50 THEN '02_10-49' WHEN $VU_RX < 100 THEN '03_50-99' WHEN $VU_RX < 300 THEN '04_100-299' ELSE '05_300+' END"
+vu_hist() {  # $1 = orders 추가 조건
+    q_order "SET SESSION group_concat_max_len=1048576; SELECT COALESCE(GROUP_CONCAT(CONCAT(b,'=',c) ORDER BY b SEPARATOR '|'),'-') FROM (SELECT $VU_BUCKET b, COUNT(*) c FROM orders WHERE idempotency_key LIKE '%-vu%' AND ($SCOPE_O) $1 GROUP BY 1) t;"
+}
+vu_all=$(vu_hist "")                                                    # 기준선 — 전체 주문
+vu_hot=$(vu_hist "AND id IN (SELECT order_id FROM order_items WHERE product_item_id=$HOT_ID)")   # ② 경합 대상
+vu_dup=$(vu_hist "AND idempotency_key IN (SELECT idempotency_key FROM orders WHERE idempotency_key IS NOT NULL AND ($SCOPE_O) GROUP BY idempotency_key HAVING COUNT(*) > 1)")  # ① 중복 주문
+[ -z "$vu_all" ] && vu_all="-"; [ -z "$vu_hot" ] && vu_hot="-"; [ -z "$vu_dup" ] && vu_dup="-"
+
+# ④ lost update 는 위반이 user DB(원장)에 있고 VU 는 order DB(주문)에 있어 교차 DB다.
+# 위반 건수가 수백 규모(실측 304~395)라 a_T1 과 같은 청크 분할로 감당된다.
+vu_lost="-"; vu_lost_note=""
+if [ "$d4_chain" -gt 0 ] && [ "$d4_chain" -le "$REFUND_ID_CAP" ]; then
+    lost_ids=$(q_user "SET SESSION group_concat_max_len=16777216; SELECT COALESCE(GROUP_CONCAT(DISTINCT oid),'') FROM (SELECT CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(h.description,'orderId=',-1),',',1) AS UNSIGNED) oid, h.current_money cm, LAG(h.change_money) OVER (PARTITION BY h.CUSTOMER_ID ORDER BY h.id) prev FROM customer_balance_history h JOIN customer c ON c.id = h.CUSTOMER_ID WHERE c.email LIKE 'ctrich%') t WHERE t.prev IS NOT NULL AND t.cm <> t.prev AND t.oid > 0;")
+    case "$lost_ids" in
+        ''|*[!0-9,]*) vu_lost_note="orderId 추출 실패 — 측정불가" ;;
+        *)
+            _acc=""; _fail=0; _chunk=""; _n=0
+            _q() { q_order "SELECT COALESCE(GROUP_CONCAT(CONCAT(b,'=',c) SEPARATOR '|'),'') FROM (SELECT $VU_BUCKET b, COUNT(*) c FROM orders WHERE id IN ($1) AND idempotency_key LIKE '%-vu%' GROUP BY 1) t;"; }
+            for _id in $(echo "$lost_ids" | tr ',' ' '); do
+                _chunk="${_chunk:+$_chunk,}$_id"; _n=$(( _n + 1 ))
+                if [ "$_n" -ge "$REFUND_ID_CHUNK" ] || [ "${#_chunk}" -ge "$REFUND_ARG_MAX" ]; then
+                    _r=$(_q "$_chunk"); case "$_r" in *[!0-9a-z_=|+-]*) _fail=1 ;; *) _acc="${_acc:+$_acc|}$_r" ;; esac
+                    _chunk=""; _n=0
+                fi
+            done
+            [ -n "$_chunk" ] && { _r=$(_q "$_chunk"); case "$_r" in *[!0-9a-z_=|+-]*) _fail=1 ;; *) _acc="${_acc:+$_acc|}$_r" ;; esac; }
+            if [ "$_fail" -ne 0 ]; then
+                vu_lost_note="orders 조회 조각 실패 — 측정불가"
+            else
+                # 조각별 버킷 합산 (b=c 토큰들을 버킷별로 더한다)
+                vu_lost=$(echo "$_acc" | tr '|' '\n' | awk -F= 'NF==2{s[$1]+=$2} END{r="";for(k in s){r=r (r?"|":"") k "=" s[k]} print (r?r:"-")}' | tr ' ' '\n' | sort | tr '\n' '|' | sed 's/|$//')
+                vu_lost_note="위반 ${d4_chain}행 중 orderId 추출분, ${REFUND_ID_CHUNK}개씩 분할"
+            fi
+            ;;
+    esac
+elif [ "$d4_chain" -eq 0 ]; then
+    vu_lost_note="④ 위반 0 — 대상 없음"
+else
+    vu_lost_note="위반 ${d4_chain}행 > 상한 ${REFUND_ID_CAP} — 측정불가"
+fi
+
 N=$(( v1n + v2max + unrec + d4_chain + d5b + chaos_res ))
 
 # 수치 우측정렬 (숫자는 ASCII 라 바이트 폭 = 표시 폭)
@@ -514,6 +568,21 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo ""
     echo "장애별 위반(건): ①=$(num "$v1n") ②=$(num "$v2max") ③=$(num "$unrec") ④=$(num "$d4_chain") ⑤=$(num "$d5b")"
     echo "카오스잔여(T1-T4): $(num "$chaos_res")  (v3a $v3a − ③미보상 $unrec + a_T1 ${a_t1})"
+    echo ""
+    echo "[VU 대조 — 동시성 장애가 어느 부하 수준에서 났나]  버킷: lt10 / 10-49 / 50-99 / 100-299 / 300+"
+    echo "   전체 주문(기준선)     : $vu_all"
+    echo "   hot SKU 주문(② 경합) : $vu_hot"
+    echo "   ① 중복 주문           : $vu_dup"
+    echo "   ④ lost update 주문    : $vu_lost   ${vu_lost_note:+($vu_lost_note)}"
+    echo "   ※ k6 가 멱등키에 요청 시점 활성 VU 를 인코딩한다(<uuid>-vu<N> → orders.idempotency_key)."
+    echo "      기준선과 비교해서 읽을 것 — 위반이 고VU 버킷에 치우쳤는지가 신호다."
+    echo "   ※ ★ VU 는 원인이 아니라 결과일 수 있다. 요청이 느려지면 k6 가 도착률 유지를 위해 VU 를 늘리므로,"
+    echo "      카오스 구간에서 VU 급등과 위반이 함께 나타나는 것은 공통 원인에 의한 상관이다(실측 C-run1:"
+    echo "      평시 VU 4~10, T1 구간 평균 227.8, T4 직후 305.5, 최대 800=maxVUs 상한)."
+    echo "      ④ 의 실제 동시성 결정 요인은 VU 수가 아니라 같은 고객 행을 동시에 친 트랜잭션 수다."
+    echo "   ※ ② 는 집계로 탐지돼(차감량 vs 확정수량) 위반 주문을 개별 식별할 수 없다 — hot SKU 주문 전체의"
+    echo "      VU 분포를 대리 지표로 쓴다. ④ 는 원장 위반 행의 orderId 로 주문에 조인해 개별 귀속된다."
+    echo "   ※ '-' 이면 멱등키에 VU 가 없는 것(VU 인코딩 이전 런) — 0 으로 읽지 말 것."
     echo "총 위반 건수(의도①-⑤ + 카오스잔여) N = $N"
     echo "돈 보존 누수(원) = $money_leak  (부호: +면 소실/은닉, −면 무에서 창조)"
     echo "   ※ 계수 기준은 '위반된 불변식' — 한 원인이 두 불변식을 깨면 각각 센다(⑤ 동시 재처리 → ⑤ 1 + ② 1)."

@@ -27,6 +27,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
+import exec from 'k6/execution';
 import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 
 const GATEWAY_URL  = __ENV.GATEWAY_URL || 'http://gateway';
@@ -197,7 +198,18 @@ export default function (data) {
     if (type === 'hot') attemptsHot.add(1);
     else attemptsNorm.add(1);
 
-    const key = uuidv4();
+    // ★ 멱등키에 '요청 시점의 활성 VU 수'를 인코딩한다 — 동시성 장애(②·④)를 부하 수준과 대조하기 위함.
+    //   앱 스키마를 건드리지 않고 계측을 심는 유일한 경로다: 이 문자열이 그대로
+    //   orders.idempotency_key(VARCHAR(64)) 에 저장되므로, 위반 주문의 VU 를 사후에 조회할 수 있다.
+    //   uuid(36) + '-vu' + 최대 4자리 = 42자 → 컬럼 상한 64 안에 들어간다.
+    //
+    // ★ ① 측정을 깨지 않는다: 아래 재전송·타임아웃 재시도가 이 key 변수를 '그대로' 재사용하므로
+    //   중복 주문은 여전히 동일 문자열을 갖는다(v1 = 같은 키로 만들어진 주문의 초과분).
+    //   VU 를 재전송 시점에 다시 읽으면 키가 갈라져 ① 이 통째로 0 이 되므로 절대 그렇게 하지 말 것.
+    //
+    // ★ 해석 주의: VU 는 원인이 아니라 결과일 수 있다. 요청이 느려지면 k6 가 도착률을 유지하려고
+    //   VU 를 늘리므로, 카오스 구간에서 VU 급등과 위반이 함께 나타나는 것은 공통 원인에 의한 상관이다.
+    const key = `${uuidv4()}-vu${exec.instance.vusActive}`;
     const res = placeOrder(token, sku, key);
     orderLatency.add(res.timings.duration);
     if (res.status === 200) order2xx.add(1); else orderNon2xx.add(1);
