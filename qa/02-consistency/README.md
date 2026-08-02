@@ -82,6 +82,30 @@ cd qa/02-consistency
 docker compose -f docker-compose.qa.yml build    # 이미지 재빌드
 ```
 
+> **arm 을 바꿀 때는 이미지를 명시적으로 지운 뒤 빌드할 것.**
+>
+> ```bash
+> docker rmi -f consist-orderapi:latest consist-userapi:latest consist-gateway:latest consist-eureka:latest
+> docker compose -f docker-compose.qa.yml build
+> ```
+>
+> 빌드가 실패해도 **이전 arm 의 이미지가 그대로 남아 조용히 재사용된다.** 실제로 `gradlew` 가 CRLF 로
+> 체크아웃돼 빌드가 `exit 127` 로 죽었는데 이전 arm 이미지가 남아, 그대로 돌렸다면 `T-run*` 이 control
+> 재측정이 되고 `N→r` 이 1:1 로 나와 "방어 효과 없음"이라는 정반대 결론이 아무 흔적 없이 남을 뻔했다.
+> `.dockerignore` 가 `qa/` 를 제외하므로 하네스 리비전은 이미지와 인과가 없어, **브랜치나 소스만 봐서는
+> 판별할 수 없다.** 빌드 로그에 `Built` 가 찍혀도 캐시 재사용일 수 있으니 시각·ID 로 판단하지 말 것.
+>
+> **판별은 스모크의 `processed_events` 로 한다** (아래 판정기준 표). `verify` 도 이 값으로 arm 을 실측
+> 판정해 헤더에 찍고, `aggregate-runs.sh` 는 라벨과 어긋나는 런을 집계에서 제외한다.
+>
+> `gradlew` 가 CRLF 면 빌드가 `exit 127` 로 죽는다 — `.gitattributes` 에 `text eol=lf` 규칙이 있으나
+> 규칙 적용 전에 체크아웃된 워킹트리는 CRLF 로 남는다. 워크트리(worktree)도 별도 체크아웃이라 각각 확인할 것:
+>
+> ```bash
+> git ls-files --eol -- gradlew          # w/crlf 면 아래로 교정
+> rm -f gradlew && git checkout -- gradlew
+> ```
+
 2. 통합 시나리오 실행전 스모크 테스트 — 빌드/세팅 정상동작 확인
 
 results/$LABEL-verify.txt 의 N 값이 판정기준에 맞음을 확인.
