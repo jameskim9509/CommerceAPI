@@ -89,17 +89,6 @@ docker compose -f docker-compose.qa.yml build    # 이미지 재빌드
 > docker compose -f docker-compose.qa.yml build
 > ```
 >
-> 빌드가 실패해도 **이전 arm 의 이미지가 그대로 남아 조용히 재사용된다.** 실제로 `gradlew` 가 CRLF 로
-> 체크아웃돼 빌드가 `exit 127` 로 죽었는데 이전 arm 이미지가 남아, 그대로 돌렸다면 `T-run*` 이 control
-> 재측정이 되고 `N→r` 이 1:1 로 나와 "방어 효과 없음"이라는 정반대 결론이 아무 흔적 없이 남을 뻔했다.
-> `.dockerignore` 가 `qa/` 를 제외하므로 하네스 리비전은 이미지와 인과가 없어, **브랜치나 소스만 봐서는
-> 판별할 수 없다.** 빌드 로그에 `Built` 가 찍혀도 캐시 재사용일 수 있으니 시각·ID 로 판단하지 말 것.
->
-> **판별은 스모크의 `processed_events` 로 한다** (아래 판정기준 표). `verify` 도 이 값으로 arm 을 실측
-> 판정해 헤더에 찍고, `aggregate-runs.sh` 는 라벨과 어긋나는 런을 집계에서 제외한다.
->
-> `gradlew` 가 CRLF 면 빌드가 `exit 127` 로 죽는다 — `.gitattributes` 에 `text eol=lf` 규칙이 있으나
-> 규칙 적용 전에 체크아웃된 워킹트리는 CRLF 로 남는다. 워크트리(worktree)도 별도 체크아웃이라 각각 확인할 것:
 >
 > ```bash
 > git ls-files --eol -- gradlew          # w/crlf 면 아래로 교정
@@ -123,7 +112,7 @@ docker compose -f docker-compose.qa.yml up -d db-seed
 
 # 시드 + 레지스트리 전파 대기
 docker compose -f docker-compose.qa.yml wait db-seed
-sleep 60                 
+sleep 60               
 
 # 카오스 없이 작은 부하만
 RUN_LABEL=$LABEL ORDER_TARGET=2000 ARRIVAL_RATE=50 \
@@ -163,11 +152,11 @@ docker compose -f docker-compose.qa.yml up -d db-seed
 
 # 3) 시드 + 레지스트리 전파 대기
 docker compose -f docker-compose.qa.yml wait db-seed
-sleep 60                 
+sleep 60               
 
 # 4) 주변 장애 주입 스케줄 실행
 ARRIVAL_RATE=90 ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
-CHAOS_PID=$!      
+CHAOS_PID=$!    
 
 # 5) k6 셸 진입
 RUN_LABEL=$LABEL ORDER_TARGET=100000 ARRIVAL_RATE=90 \
@@ -184,6 +173,29 @@ RUN_LABEL=$LABEL bash verify-consistency.sh             # 판정 결과 확인
 
 # 8) 정리 후 다음 run 으로
 docker compose -f docker-compose.qa.yml down -v
+```
+
+> **7) 에서 카오스가 끝까지 갔는지 반드시 확인한다.**
+>
+> ```bash
+> grep -q "카오스 스케줄 종료" results/$LABEL-chaos.log || echo "미완주 — 이 런은 폐기"
+> ```
+>
+> 주입 도중 `docker` 명령이 걸리면(T1 kill 후 재기동 hang 등) 스케줄이 그 자리에 멈추고
+> 남은 주입이 통째로 빠진다. **주입 조합이 다른 실험**이 되는데 N 은 그럴듯한 값으로 나와
+> 로그를 보지 않으면 구분되지 않는다 (실제로 C-run6 이 T4 없이 끝나 N 이 42,826 으로,
+> 카오스잔여가 0 으로 나왔다 — 정상 런은 67,000 대 / 18,000~26,000 대).
+> 폐기할 런은 `results/$LABEL-FAILED` 에 사유를 적어두면 `aggregate-runs.sh` 가 집계에서 뺀다.
+
+4. 반복 실행 자동화 (선택)
+
+위 3) 절차를 라벨만 바꿔 반복하는 드라이버. 각 단계 로그·산출물은 수동 절차와 동일하게
+남고, 카오스 미완주 시 `-FAILED` 마커를 자동으로 기록한다.
+
+```bash
+bash run-batch.sh C 1 10        # C-run1 … C-run10
+bash run-batch.sh C smoke       # C-smoke (무카오스 소부하)
+bash run-batch.sh C 6 10        # 폐기된 런만 재측정
 ```
 
 5. 반복된 결과 집계

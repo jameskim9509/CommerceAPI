@@ -46,8 +46,16 @@ minv()   { printf '%s\n' "$@" | sort -n | head -1; }
 maxv()   { printf '%s\n' "$@" | sort -n | tail -1; }
 
 # --- run 파일 수집 (스모크 등 run 넘버가 없는 라벨은 제외) ---
-files=$(ls -1 "results/${PREFIX}-run"*"-verify.txt" 2>/dev/null | sort -V)
-if [ -z "$files" ]; then
+# ★ <LABEL>-FAILED 마커가 있는 런은 뺀다 — 기동 실패나 카오스 스케줄 미완주처럼
+#   '다른 실험이 돼버린' 런이다. 값 자체는 그럴듯하게 나오므로 마커 없이는 구분되지 않는다.
+files=""; excluded=()
+for f in $(ls -1 "results/${PREFIX}-run"*"-verify.txt" 2>/dev/null | sort -V); do
+    if [ -e "results/$(basename "$f" -verify.txt)-FAILED" ]; then
+        excluded+=("$(basename "$f" -verify.txt)"); continue
+    fi
+    files="$files $f"
+done
+if [ -z "${files// /}" ]; then
     echo "[aggregate] results/${PREFIX}-run*-verify.txt 없음 — 먼저 수동 측정 절차로 run 을 쌓을 것" >&2
     exit 1
 fi
@@ -126,10 +134,15 @@ vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); crs=(); mismatched=()
         echo "> arm 전환 시 이미지 재빌드가 실패했는데 이전 arm 이미지가 남아 있으면 이 일이 생긴다."
         echo "> 해당 런은 폐기하고 이미지를 재빌드한 뒤 다시 측정할 것."
     fi
+    if [ "${#excluded[@]}" -gt 0 ]; then
+        echo ""
+        echo "> ⚠ **FAILED 마커 ${#excluded[@]}건 — 집계에서 제외됨**: ${excluded[*]}"
+        echo "> 기동 실패 또는 카오스 스케줄 미완주(주입 조합이 달라진 런). 같은 번호로 재측정할 것."
+    fi
     echo ""
     echo "> KPI 는 이 arm 의 중앙값을 반대편 arm(다른 브랜치) 과 비교:"
     echo ">   총 위반 건수 N(control) → r(treatment) — 헤드라인. 장애별 ①-⑤ 도 각각 A → a 로 대비."
-    echo "> ★ N 은 재정의됐다(장애①-⑤ 위반 건수 합). 기존 20런 리포트의 N(구산식, 단위 혼합)과 직접 비교 금지."
+    echo "> ★ N 은 재정의됐다(의도 장애①-⑤ + 카오스잔여 T1~T4). 기존 20런 리포트의 N(구산식, 단위 혼합)과 직접 비교 금지."
 } > "$AGG"
 
 echo "[aggregate] 완료 → $AGG"
