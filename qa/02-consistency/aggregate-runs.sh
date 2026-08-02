@@ -25,9 +25,14 @@ AGG="results/${PREFIX}-AGGREGATE.md"
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
 
 # --- 파싱 (verify.txt = 판정 / k6-summary.json = 실행 파라미터) ---
-# ★ N = 총 위반 건수(장애①-⑤ 합산). 구산식 N(`집계 KPI ... N = ` 토큰, 단위 혼합)은 verify 에서
-#   삭제됐다 — 구버전 verify.txt 는 이 extract 에 안 걸려 "?" 로 표시되고 표본에서 자동 제외된다.
-extract_N()    { grep -oE '총 위반 건수.* N = [0-9]+' "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
+# ★ N 은 verify 의 출력 라인을 읽지 않고 성분에서 직접 계산한다.
+#   이유: 카오스잔여를 N 에 포함하도록 산식이 바뀌었는데, 그 이전에 측정된 산출물은 옛 N 라인을
+#   갖고 있다. 성분(①-⑤·v3a·a_T1)은 두 버전 모두 동일하게 기록되므로 여기서 계산하면
+#   구·신 산출물이 같은 산식으로 집계된다(재측정 불필요).
+#     N = ① + ② + ③ + ④ + ⑤ + 카오스잔여
+#     카오스잔여 = max(0, v3a − ③미보상) + a_T1   ← ③미보상 ⊆ v3a 라 빼야 이중 계상이 없다
+extract_v3a()  { grep -oE 'v3a PENDING/PAID 잔여 +: +[0-9]+' "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
+extract_aT1()  { grep -oE 'a_T1  CONFIRMED 인데 환불된 주문 +: +[0-9]+' "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
 extract_leak() { grep -oE '돈 보존 누수\(원\) = -?[0-9]+' "$1" 2>/dev/null | grep -oE '\-?[0-9]+$' | head -1; }
 # 장애별 위반(건): ①=.. ②=.. ... 줄에서 해당 장애의 건수 (기호는 verify 출력과 일치해야 한다)
 # ★ verify 의 num() 이 %8d 로 우측정렬 패딩하므로 '=' 와 숫자 사이에 공백이 들어간다 — 반드시 흡수할 것.
@@ -47,22 +52,31 @@ if [ -z "$files" ]; then
     exit 1
 fi
 
-vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); mismatched=()
+vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); crs=(); mismatched=()
 {
     echo "# ADR-008 정합성 측정 집계 — arm=$PREFIX (branch=$BRANCH)"
     echo ""
-    echo "| run | ORDER_TARGET | ARRIVAL_RATE | 총 위반 건수(N/r) | ① | ② | ③ | ④ | ⑤ | money_leak(원) |"
-    echo "|----:|-------------:|-------------:|------------------:|---:|---:|---:|---:|---:|---------------:|"
+    echo "| run | ORDER_TARGET | ARRIVAL_RATE | 총 위반 건수(N/r) | ① | ② | ③ | ④ | ⑤ | 카오스잔여 | money_leak(원) |"
+    echo "|----:|-------------:|-------------:|------------------:|---:|---:|---:|---:|---:|-----------:|---------------:|"
     for f in $files; do
         label=$(basename "$f" -verify.txt)               # 예: T-run3
         k6="results/${label}-k6-summary.json"
-        v=$(extract_N "$f");    v=${v:-"?"}
         l=$(extract_leak "$f"); l=${l:-"?"}
         a1=$(extract_fault "$f" "①"); a1=${a1:-"?"}
         a2=$(extract_fault "$f" "②"); a2=${a2:-"?"}
         a3=$(extract_fault "$f" "③"); a3=${a3:-"?"}
         a4=$(extract_fault "$f" "④"); a4=${a4:-"?"}
         a5=$(extract_fault "$f" "⑤"); a5=${a5:-"?"}
+        # N 을 성분에서 계산 — 구·신 산출물을 같은 산식으로 집계하기 위함(위 extract_N 주석 참조)
+        v3a=$(extract_v3a "$f"); v3a=${v3a:-""}
+        at1=$(extract_aT1 "$f"); at1=${at1:-0}
+        cr="?"; v="?"
+        if [ -n "$v3a" ] && [ "$a3" != "?" ]; then
+            cr=$(( (v3a > a3 ? v3a - a3 : 0) + at1 ))
+            if [ "$a1" != "?" ] && [ "$a2" != "?" ] && [ "$a4" != "?" ] && [ "$a5" != "?" ]; then
+                v=$(( a1 + a2 + a3 + a4 + a5 + cr ))
+            fi
+        fi
         t="?"; r="?"
         if [ -f "$k6" ]; then
             t=$(extract_json "$k6" order_target); t=${t:-"?"}
@@ -74,10 +88,10 @@ vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); mismatched=()
         expect=$([ "$PREFIX" = "C" ] && echo control || echo treatment)
         if [ "$arm" != "?" ] && [ "$arm" != "$expect" ]; then
             mismatched+=("$label(실측 $arm ≠ 라벨 $expect)")
-            echo "| ${label#"$PREFIX"-run} ⚠ | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $l |"
+            echo "| ${label#"$PREFIX"-run} ⚠ | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $cr | $l |"
             continue
         fi
-        echo "| ${label#"$PREFIX"-run} | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $l |"
+        echo "| ${label#"$PREFIX"-run} | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $cr | $l |"
         [ "$v" != "?" ]  && vals+=("$v")
         [ "$l" != "?" ]  && leaks+=("$l")
         [ "$a1" != "?" ] && f1s+=("$a1")
@@ -85,14 +99,17 @@ vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); mismatched=()
         [ "$a3" != "?" ] && f3s+=("$a3")
         [ "$a4" != "?" ] && f4s+=("$a4")
         [ "$a5" != "?" ] && f5s+=("$a5")
+        [ "$cr" != "?" ] && crs+=("$cr")
     done
     echo ""
     n=${#vals[@]}
     if [ "$n" -gt 0 ]; then
-        echo "**총 위반 건수(N = ①+②+③+④+⑤)**: median=$(median "${vals[@]}")  range=[$(minv "${vals[@]}")..$(maxv "${vals[@]}")]  (n=$n)"
+        echo "**총 위반 건수(N = ①+②+③+④+⑤ + 카오스잔여)**: median=$(median "${vals[@]}")  range=[$(minv "${vals[@]}")..$(maxv "${vals[@]}")]  (n=$n)"
         if [ "${#f1s[@]}" -gt 0 ]; then
             echo "**장애별 위반(median)**: ①=$(median "${f1s[@]}")  ②=$(median "${f2s[@]}")  ③=$(median "${f3s[@]}")  ④=$(median "${f4s[@]}")  ⑤=$(median "${f5s[@]}")"
         fi
+        [ "${#crs[@]}" -gt 0 ] && \
+        echo "**카오스잔여(T1-T4, median)**: $(median "${crs[@]}")  range=[$(minv "${crs[@]}")..$(maxv "${crs[@]}")]"
         [ "${#leaks[@]}" -gt 0 ] && \
         echo "**돈 누수(원)**: median=$(median "${leaks[@]}")  range=[$(minv "${leaks[@]}")..$(maxv "${leaks[@]}")]"
         if [ "$n" = "1" ]; then

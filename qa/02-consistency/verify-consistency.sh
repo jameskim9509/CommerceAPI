@@ -451,7 +451,27 @@ o_l1_loss=$(( oc_orders - dn_orders ))
 #   (구산식 주석의 구조적 항등). 따라서 max 가 두 구간을 모두 덮으면서 이중 계상도 없다.
 v2max=$(( v2b > v2c ? v2b : v2c ))
 unrec=$(( d3p > d3r ? d3p - d3r : 0 ))
-N=$(( v1n + v2max + unrec + d4_chain + d5b ))
+
+# ---- 카오스 잔여: 주변 장애 T1~T4 가 남긴 위반 (의도된 장애 ①-⑤ 와 별개 성분) ----
+# ADR-008 의 측정 모델은 N = 의도된 정합성 오류 + 카오스 잔여 다. ①-⑤ 만 세면 T1~T4 피해가
+# 통째로 빠져 r=0 이 나오는데, 그건 '방어가 T1~T4 까지 막았다'는 뜻이 아니라 '안 셌다'는 뜻이다.
+#
+#   카오스잔여 = (v3a − ③미보상) + a_T1
+#
+# ★ v3a(미착지 주문)에서 ③미보상을 빼는 이유 — 이중 계상 방지:
+#   재고 부족으로 실패한 주문은 롤백되어 PENDING 으로 남으므로 ③미보상 ⊆ v3a 다.
+#   실측(C-run1): v3a 27,478 ⊇ hop1유실 22,333 + ③미보상 1,088. 빼지 않으면 ③이 두 번 세진다.
+# ★ hop1 유실은 따로 더하지 않는다 — order-created 가 유실되면 결제가 안 일어나 주문이 PENDING 에
+#   남으므로 역시 v3a 의 부분집합이다(위 실측이 이를 뒷받침).
+# ★ a_T1(CONFIRMED 인데 환불된 주문)은 대상이 CONFIRMED 라 v3a(PENDING/PAID)와 서로소다 → 그대로 더한다.
+#   control 은 환불 코드가 없어 구조적 0, treatment 는 T1/T2 의 마커창 파열로 0~5건 발생한다.
+#   즉 이 성분은 '방어를 켰기 때문에 생기는 위반'이며 arm 대칭이 아니다(리포트에 명시할 것).
+# ★ a_T1 이 n/a(측정 불가)면 카오스잔여도 n/a 로 전파해야 하나, N 이 숫자여야 집계가 되므로
+#   0 으로 두고 대신 출력에 n/a 였음을 남긴다.
+at1_n=$([ "$a_t1" = "n/a" ] && echo 0 || echo "$a_t1")
+chaos_res=$(( (v3a > unrec ? v3a - unrec : 0) + at1_n ))
+
+N=$(( v1n + v2max + unrec + d4_chain + d5b + chaos_res ))
 
 # 수치 우측정렬 (숫자는 ASCII 라 바이트 폭 = 표시 폭)
 num() { printf '%9s' "$1"; }
@@ -493,17 +513,19 @@ REPORT="$RESULTS_DIR/${RUN_LABEL}-verify.txt"
     echo "   v3e 음수 잔액 행                            : $(num "$v3e") 행"
     echo ""
     echo "장애별 위반(건): ①=$(num "$v1n") ②=$(num "$v2max") ③=$(num "$unrec") ④=$(num "$d4_chain") ⑤=$(num "$d5b")"
-    echo "총 위반 건수(장애①-⑤ 합산) N = $N"
+    echo "카오스잔여(T1-T4): $(num "$chaos_res")  (v3a $v3a − ③미보상 $unrec + a_T1 ${a_t1})"
+    echo "총 위반 건수(의도①-⑤ + 카오스잔여) N = $N"
     echo "돈 보존 누수(원) = $money_leak  (부호: +면 소실/은닉, −면 무에서 창조)"
     echo "   ※ 계수 기준은 '위반된 불변식' — 한 원인이 두 불변식을 깨면 각각 센다(⑤ 동시 재처리 → ⑤ 1 + ② 1)."
     echo "      ② = max(v2b,v2c) 다 — v2c 단독은 재고 미소진 구간의 이중 차감을 놓친다(v2c 는 재고가"
     echo "      바닥나야 양수). k6 hot 주문이 전량 1개씩(count:1)이라 수량 = 주문 건과 동치."
-    echo "      불변식 잔여 체크(v2a/v3a/v3b/v3c/v3e)는 진단용 — ③ 미보상 ⊆ v3a 라 N 에 더하면 이중 계상."
+    echo "      카오스잔여는 v3a 에서 ③미보상을 뺀 값 + a_T1 이다 — ③미보상 ⊆ v3a 라 빼지 않으면 이중 계상."
+    echo "      hop1 유실도 v3a 의 부분집합이라 따로 더하지 않는다. a_T1 은 CONFIRMED 대상이라 v3a 와 서로소."
     echo "   ※ 구산식 N(= v1+v2a+max(v2b,v2c)+v3a+v3b+v3c+v3e, 단위 혼합)은 삭제됨 —"
     echo "      기존 20런 리포트의 N 은 구산식 값이므로 이 N 과 직접 비교 금지."
     echo ""
     echo "※ 값만 보고한다 — 합·불 판정 없음. 0 = 잔여 없음."
-    echo "   arm 비교는 aggregate-runs.sh 의 중앙값·범위로: 총 위반 N(control) → r(treatment), 장애별 ①-⑤ 도 각각 대비."
+    echo "   arm 비교는 aggregate-runs.sh 의 중앙값·범위로: 총 위반 N(control) → r(treatment), 장애별 ①-⑤ + 카오스잔여도 각각 대비."
     echo "   treatment 의 잔여 r>0 은 5개 방어 대상이 아닌 주변 장애 T1–T4 몫. control 은 desired 위반까지 더해 N≫r."
     echo ""
     echo "----- 장애별 계수·폴트 귀속 — d3p/d4b/d5b/미보상은 위 N 의 성분, a_*·o_L* 는 근사 귀속 참고값 -----"
