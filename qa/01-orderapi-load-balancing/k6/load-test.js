@@ -49,18 +49,34 @@ const GATEWAY_URL = __ENV.GATEWAY_URL || 'http://gateway';
 const VUS = parseInt(__ENV.VUS || '500');
 const USER_COUNT = parseInt(__ENV.USER_COUNT || String(VUS));
 const DURATION = __ENV.DURATION || '5m';
+const ORDER_COUNT = parseInt(__ENV.ORDER_COUNT || '50000');
+const EXECUTOR = __ENV.EXECUTOR || 'constant-vus';
 const PRODUCT_ITEM_COUNT = parseInt(__ENV.PRODUCT_ITEM_COUNT || '500');
 const EXPERIMENT_LABEL = __ENV.EXPERIMENT_LABEL || 'unknown';
 
+// EXECUTOR 로 두 부하 모델을 고른다. 둘 다 closed-loop 다 (VU 가 응답을 받아야 다음 요청을
+// 보내므로 요청 백로그가 VUS 를 넘지 않는다. 백로그가 쌓이는 건 constant-arrival-rate).
+//   constant-vus      — 런 "시간" 고정. 동시성이 끝까지 VUS 로 유지돼 꼬리 오염이 없고,
+//                       구성마다 런 길이가 같아 1/2/4 비교가 공정하다. 총 주문 수는 결과값.
+//   shared-iterations — 총 "주문 수" 고정. 공용 풀이 비면 동시성이 VUS → 0 으로 떨어지는
+//                       꼬리가 생겨 p95 가 낙관적으로 나오고, 빠른 구성일수록 런이 짧아져
+//                       그 꼬리 비중이 커진다 (구성 간 비교 시 주의).
+const SCENARIO = EXECUTOR === 'shared-iterations'
+    ? {
+        executor: 'shared-iterations',
+        vus: VUS,
+        iterations: ORDER_COUNT,
+        maxDuration: __ENV.MAX_DURATION || '30m',
+    }
+    : {
+        executor: 'constant-vus',
+        vus: VUS,
+        duration: DURATION,
+        gracefulStop: '30s',   // 종료 시점의 in-flight 반복을 중단시키지 않고 마무리
+    };
+
 export const options = {
-    scenarios: {
-        cart_order_steady: {
-            executor: 'constant-vus',
-            vus: VUS,
-            duration: DURATION,
-            gracefulStop: '30s',   // 종료 시점의 in-flight 반복을 중단시키지 않고 마무리
-        },
-    },
+    scenarios: { cart_order: SCENARIO },
     setupTimeout: '10m',
     summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
     // 유효성 가드(README): 지연시간이 아니라 "낮은 에러율"만 판정 — order 실패율 < 1%.
@@ -106,7 +122,8 @@ export function setup() {
         }
         users.push({ email, token: res.body.replace(/^"|"$/g, '') });
     }
-    console.log(`[setup] ${users.length}/${USER_COUNT} 로그인 완료 (VUS=${VUS}, DURATION=${DURATION})`);
+    const load = EXECUTOR === 'shared-iterations' ? `ORDER_COUNT=${ORDER_COUNT}` : `DURATION=${DURATION}`;
+    console.log(`[setup] ${users.length}/${USER_COUNT} 로그인 완료 (EXECUTOR=${EXECUTOR}, VUS=${VUS}, ${load})`);
     if (users.length === 0) throw new Error('[setup] 로그인 0건 — 시드/게이트웨이 확인');
     return { users };
 }
