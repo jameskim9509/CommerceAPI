@@ -11,8 +11,13 @@
 //     order 는 Redis 카트를 필수로 요구하고 주문 시 카트를 "차감"하므로,
 //     cart_add(+1) → order(-1) 쌍이면 카트가 누적되지 않는다 (OrderService.order).
 //   - VU:유저 1:1 매핑 (VUS ≤ USER_COUNT) — 같은 고객 카트에 동시 접근(race) 방지.
-//   - 상품은 1..PRODUCT_ITEM_COUNT 중 랜덤 — 단일 product_item 낙관적 락(ADR-002)
-//     경합을 피하고 부하를 분산 (orderApi 가 병목이 되도록).
+//   - 상품은 VU 번호로 고정 매핑 (VU i → product_item i). 두 가지 목적:
+//     (1) 단일 product_item 낙관적 락(ADR-002) 경합 회피 — VU 마다 다른 행을 쓴다.
+//     (2) 카트 크기 고정 — 매 반복 다른 상품을 담으면 OrderService.removeZeroCountItems 가
+//         빈 Cart.Product 껍데기를 지우지 않아 카트에 상품이 무한 누적되고, refreshCart 가
+//         카트의 전 상품을 건건이 조회(2회 호출)해 주문당 쿼리 수가 반복 횟수에 비례해 늘어난다.
+//         실측: 깨끗한 스택에서 20분 런 시 qps 3,640 → 6,973 (+92%), 주문당 쿼리 25 → 113.
+//         같은 상품을 재사용하면 카트가 상품 1개로 유지돼 런 길이와 무관하게 조건이 일정해진다.
 //   - shared-iterations 로 ORDER_COUNT 건을 고VU 로 "거의 동시에" 버스트.
 //
 // 전제 (seed/user.sql → seed/order.sql 순서로 시드 완료):
@@ -100,14 +105,15 @@ export function setup() {
     return { users };
 }
 
-// ── default: cart_add → order (VU:유저 1:1, 상품 랜덤) ──
+// ── default: cart_add → order (VU:유저 1:1, VU:상품 1:1) ──
 export default function (data) {
     const user = data.users[(__VU - 1) % data.users.length];
     if (!user) return;
     const auth = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` };
 
-    // 랜덤 상품 (product_item id 1..PRODUCT_ITEM_COUNT) → product/item 산술 매핑 (seed 와 일치)
-    const productItemId = 1 + Math.floor(Math.random() * PRODUCT_ITEM_COUNT);
+    // VU 고정 상품 (VU i → product_item i) → product/item 산술 매핑 (seed 와 일치).
+    // 매 반복 같은 상품을 담고 빼므로 카트가 상품 1개로 유지된다 (헤더 주석 참조).
+    const productItemId = ((__VU - 1) % PRODUCT_ITEM_COUNT) + 1;
     const productId = Math.floor((productItemId - 1) / 5) + 1;
     const itemIndex = ((productItemId - 1) % 5) + 1;
     const price = 1000 * itemIndex;
