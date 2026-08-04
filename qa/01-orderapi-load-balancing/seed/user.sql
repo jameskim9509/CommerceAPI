@@ -13,6 +13,10 @@
 --   password: "password" (BCrypt — Spring BCryptPasswordEncoder 호환)
 --   verify: TRUE (검증 우회) / balance: 10_000_000 / role: CUSTOMER
 --
+-- customer_balance_history 초기 행 (필수):
+--   결제 검증은 customer.balance 컬럼이 아니라 이 테이블의 최신 행을 본다.
+--   행이 없으면 잔액 0 으로 간주돼 SAGA 결제 단계가 전건 실패한다 (아래 주석 참조).
+--
 -- cleanup 은 자기 행만 (seller id=1, customer<digits>@qa.test) — 멱등 재주입 안전.
 -- =============================================================================
 
@@ -64,9 +68,26 @@ WHERE n <= 1000;
 INSERT INTO customer_roles (customer_id, roles)
 SELECT id, 'ROLE_CUSTOMER' FROM customer WHERE email REGEXP '^customer[0-9]+@qa\\.test$';
 
+-- ---------------- 초기 잔액 이력 (SAGA 결제 단계의 전제) ----------------
+-- CustomerBalanceHistoryService.changeBalance 는 잔액을 customer.balance 컬럼이 아니라
+-- customer_balance_history 의 최신 행(findByCustomerIdRecent = max(id)) 에서 읽는다.
+-- 이력이 없으면 잔액을 0 으로 간주해 모든 결제가 NOT_ENOUGH_BALANCE 로 실패하고,
+-- SAGA 가 PAYMENT_FAILED 로 끝나 재고 차감(StockConsumer)·주문 확정이 아예 실행되지 않는다.
+-- 이 경우 k6 는 HTTP 200(PENDING 생성 성공)만 보므로 에러율 0% 로 보고돼 조용히 지나간다.
+--
+-- 컬럼 의미 주의 (이름과 반대):
+--   change_money  = 결제 "후" 잔액 = 러닝 밸런스   ← 검증이 읽는 값
+--   current_money = 결제 "전" 잔액
+INSERT INTO customer_balance_history
+    (CUSTOMER_ID, change_money, current_money, from_message, description, created_date, modified_date)
+SELECT id, 10000000, 0, 'qa-seed', 'QA 초기 잔액', NOW(6), NOW(6)
+FROM customer WHERE email REGEXP '^customer[0-9]+@qa\\.test$';
+
 -- 검증
 SELECT 'seller' AS table_name, COUNT(*) AS cnt FROM seller WHERE id = 1
 UNION ALL
 SELECT 'customers', COUNT(*) FROM customer WHERE email REGEXP '^customer[0-9]+@qa\\.test$'
 UNION ALL
-SELECT 'customer_roles', COUNT(*) FROM customer_roles cr JOIN customer c ON cr.customer_id = c.id WHERE c.email REGEXP '^customer[0-9]+@qa\\.test$';
+SELECT 'customer_roles', COUNT(*) FROM customer_roles cr JOIN customer c ON cr.customer_id = c.id WHERE c.email REGEXP '^customer[0-9]+@qa\\.test$'
+UNION ALL
+SELECT 'balance_history', COUNT(*) FROM customer_balance_history bh JOIN customer c ON bh.CUSTOMER_ID = c.id WHERE c.email REGEXP '^customer[0-9]+@qa\\.test$';
