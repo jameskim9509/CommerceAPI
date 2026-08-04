@@ -226,7 +226,7 @@ services:
       GATEWAY_URL: http://gateway
       VUS: ${VUS:-500}
       USER_COUNT: ${USER_COUNT:-500}
-      ORDER_COUNT: ${ORDER_COUNT:-100000}
+      DURATION: ${DURATION:-5m}          # constant-vus 부하 지속 시간 (총 주문 수는 결과값)
       PRODUCT_ITEM_COUNT: ${PRODUCT_ITEM_COUNT:-500}
       EXPERIMENT_LABEL: ${EXPERIMENT_LABEL:-unknown}
     depends_on:

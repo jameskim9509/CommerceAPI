@@ -31,7 +31,7 @@ qa/01-orderapi-load-balancing/
 | 항목            | 값                                                                        |
 | --------------- | ------------------------------------------------------------------------- |
 | 측정 대상       | `POST /order/customer/cart, POST order/customer/cart/order` 응답 시간  |
-| 워크로드        | **shared-iterations** — 500 VUs, 10만 건 요청                      |
+| 워크로드        | **constant-vus** — 500 VUs 를 5 분간 유지 (총 주문 수는 결과값)     |
 | 반복 단위       | `cart_add → order`                                                     |
 | 측정 지표       | 주문 응답 p50/p95/**p99**, throughput,(초당 완료주문수) 에러율      |
 | 보조 지표       | 인스턴스 별 CPU 사용률, MySQL 스레드 부하                                 |
@@ -56,19 +56,27 @@ docker compose -f docker-compose.qa.yml up -d \
     mysql-user mysql-order redis kafka eureka userapi orderapi gateway db-seed
 
 # 3) 시드 + 레지스트리 전파 대기
-docker compose -f docker-compose.qa.yml wait db-seed   
-sleep 30                                                # Eureka 등록 → gateway fetch 전파 여유 (db-seed 는 미보장)
+docker compose -f docker-compose.qa.yml wait db-seed
+# Eureka 등록 → 서버 응답캐시(30s) → gateway fetch(30s) → LB 캐시(35s) 로 전파가
+# 최악 90 초 이상 걸린다. 고정 sleep 대신 registry 를 폴링해 N 개가 UP 인지 확인한다.
+# (전파 전에 부하를 걸면 조용히 N=1 을 측정하게 된다)
+until [ "$(curl -s -H 'Accept: application/json' http://localhost:8761/eureka/apps \
+        | grep -o '"instanceId":"order-api' | wc -l)" -ge "$N" ] \
+   && [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/order/customer/cart)" = "403" ]; do
+    sleep 5
+done
 
 # 4) 모니터링 백그라운드 → results/$LABEL-*.csv에 기록
 bash monitor-stats.sh $LABEL &
 
-# 5) k6 셸 진입
-EXPERIMENT_LABEL=$LABEL VUS=500 ORDER_COUNT=100000 \
-    docker compose -f docker-compose.qa.yml run --rm --entrypoint sh k6
+# 5) 워밍업 런 (결과 버림) — JIT·HikariCP·Hibernate 캐시가 데워지기 전 값은 2 배 이상 느리다
+EXPERIMENT_LABEL=warmup VUS=500 DURATION=2m \
+    docker compose -f docker-compose.qa.yml run --rm --no-deps k6 run /scripts/load-test.js
 
-# 6) k6 시나리오 실행 및 종료
-k6 run --summary-export /results/$EXPERIMENT_LABEL-k6-summary.json /scripts/load-test.js
-exit
+# 6) 본 측정 (--no-deps 필수 — 없으면 depends_on 재조정으로 orderapi 가 1 개로 스케일다운된다)
+EXPERIMENT_LABEL=$LABEL VUS=500 DURATION=5m \
+    docker compose -f docker-compose.qa.yml run --rm --no-deps \
+    k6 run --summary-export /results/$LABEL-k6-summary.json /scripts/load-test.js
 
 # 7) 모니터 종료
 rm -f /tmp/qa-monitor.lock

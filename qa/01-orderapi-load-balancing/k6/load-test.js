@@ -18,19 +18,25 @@
 //         카트의 전 상품을 건건이 조회(2회 호출)해 주문당 쿼리 수가 반복 횟수에 비례해 늘어난다.
 //         실측: 깨끗한 스택에서 20분 런 시 qps 3,640 → 6,973 (+92%), 주문당 쿼리 25 → 113.
 //         같은 상품을 재사용하면 카트가 상품 1개로 유지돼 런 길이와 무관하게 조건이 일정해진다.
-//   - shared-iterations 로 ORDER_COUNT 건을 고VU 로 "거의 동시에" 버스트.
+//   - constant-vus 로 DURATION 동안 VU 수를 끝까지 유지한다 (shared-iterations 아님).
+//     shared-iterations 는 공용 반복 풀이 비면서 동시성이 500 → 0 으로 떨어지는데,
+//     그 꼬리 구간은 경합이 적어 인위적으로 빨라 p95 를 낙관적으로 만든다.
+//     또한 총 반복 수를 고정하면 빠른 구성일수록 런이 짧아져 꼬리 비중이 커지므로
+//     인스턴스 1/2/4 비교가 불공정해진다. 런 "시간" 을 고정해 조건을 맞춘다.
+//     (closed-loop 인 점은 동일 — VU 가 응답을 받아야 다음 요청을 보내므로 백로그 누적 없음.
+//      백로그가 쌓이는 건 constant-arrival-rate 이고, 여기서는 쓰지 않는다.)
 //
 // 전제 (seed/user.sql → seed/order.sql 순서로 시드 완료):
 //   - userApi DB: seller1(id=1) + customer{1..N}@qa.test, pw "password", verify=true, balance=10M
+//     + customer_balance_history 초기 행 (없으면 SAGA 결제가 전건 실패한다 — seed/user.sql 주석 참조)
 //   - orderApi DB: 100 product × 5 product_item (id 1..500, seller_id=1, 재고 1M)
 //
 // 환경변수:
 //   GATEWAY_URL (기본 http://gateway)
-//   VUS (기본 500)            — 동시 VU = 버스트 강도. USER_COUNT 이하로 유지 (카트 race 방지)
+//   VUS (기본 500)            — 동시 VU = 부하 강도. USER_COUNT 이하로 유지 (카트 race 방지)
 //   USER_COUNT (기본 = VUS)   — setup 에서 로그인할 유저 수 (시드 customer 수 이하)
-//   ORDER_COUNT (기본 100000) — 총 주문(=iteration) 수
+//   DURATION (기본 5m)        — 부하 지속 시간. 총 주문 수는 결과값이지 입력이 아니다.
 //   PRODUCT_ITEM_COUNT (기본 500)
-//   MAX_DURATION (기본 30m)
 //   EXPERIMENT_LABEL (예: 1_instance/2_instance/4_instance)
 // =============================================================================
 
@@ -42,17 +48,17 @@ import { check } from 'k6';
 const GATEWAY_URL = __ENV.GATEWAY_URL || 'http://gateway';
 const VUS = parseInt(__ENV.VUS || '500');
 const USER_COUNT = parseInt(__ENV.USER_COUNT || String(VUS));
-const ORDER_COUNT = parseInt(__ENV.ORDER_COUNT || '100000');
+const DURATION = __ENV.DURATION || '5m';
 const PRODUCT_ITEM_COUNT = parseInt(__ENV.PRODUCT_ITEM_COUNT || '500');
 const EXPERIMENT_LABEL = __ENV.EXPERIMENT_LABEL || 'unknown';
 
 export const options = {
     scenarios: {
-        cart_order_burst: {
-            executor: 'shared-iterations',
+        cart_order_steady: {
+            executor: 'constant-vus',
             vus: VUS,
-            iterations: ORDER_COUNT,
-            maxDuration: __ENV.MAX_DURATION || '30m',
+            duration: DURATION,
+            gracefulStop: '30s',   // 종료 시점의 in-flight 반복을 중단시키지 않고 마무리
         },
     },
     setupTimeout: '10m',
@@ -100,7 +106,7 @@ export function setup() {
         }
         users.push({ email, token: res.body.replace(/^"|"$/g, '') });
     }
-    console.log(`[setup] ${users.length}/${USER_COUNT} 로그인 완료 (VUS=${VUS}, ORDER_COUNT=${ORDER_COUNT})`);
+    console.log(`[setup] ${users.length}/${USER_COUNT} 로그인 완료 (VUS=${VUS}, DURATION=${DURATION})`);
     if (users.length === 0) throw new Error('[setup] 로그인 0건 — 시드/게이트웨이 확인');
     return { users };
 }
