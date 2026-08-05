@@ -1,261 +1,114 @@
-# ADR-005 시나리오 3 측정 결과
+# ADR-005 시나리오 3 측정 결과 — orderApi 부하 분산
 
-- 측정 일자: 2026-05-27
-- 측정 환경: Docker Desktop 단일 노드, 16 CPU / 16 GB RAM 할당
-- 인스턴스당 자원 한도: orderApi/userApi 2 CPU · 1 GB, gateway 1 CPU · 768 MB
-- 워크로드: k6 ramping-vus 0 → 50 (30s warm-up) → 200 (1m ramp) → 200 (3m steady) → 0 (30s cool-down)
-- 측정 대상: `POST /order/customer/cart/order` 응답 시간 (gateway → orderApi)
-- 시드: 1000 customer (verify=true), 100 product × 5 product_item (재고 1M)
-- 측정 회차: 본 보고서는 측정 인프라 자체의 버그 (`docker compose run k6` 가 `--scale` 을 리셋) 를
-  발견·수정 (`--no-deps` 추가) 한 뒤의 최종 회차 결과.
+- 측정 일자: 2026-08-05
+- 측정 환경: Docker Desktop 단일 노드, 16 CPU / 16 GB
+- 자원 한도: orderApi·userApi 2 CPU · 1 GB, gateway 1 CPU · 768 MB, eureka 0.5 CPU (CPU 주기 100 ms 기본값)
+- 워크로드: k6 `shared-iterations` — 500 VU 로 주문 **50,000 건 버스트**
+- 반복 단위: `cart_add → order` (VU:유저 1:1, VU:상품 1:1)
+- 시드: customer 1,000 (verify=true, balance_history 초기 행 포함), product 100 × product_item 5 (재고 1M)
 
-## 측정 인프라 버그 (먼저 보고)
+## 측정 절차
 
-본 측정 과정의 가장 큰 발견은 **테스트 자체의 결함**이었다. 초기 회차들은 모두 사실상 N=1 측정.
+각 N (1 / 2 / 4) 마다 동일하게 반복했다.
 
-```bash
-# run-experiments.sh 의 k6 실행
-docker compose -f docker-compose.qa.yml run --rm k6 ...
+1. `docker compose down -v` — Redis 카트·DB 상태 완전 초기화
+2. 스택 기동 → `db-seed` 완료(`exit 0`) 확인
+3. **Eureka registry 폴링** — `order-api` 인스턴스가 N 개 UP 이고 gateway 라우팅이 살아날 때까지 대기
+4. **워밍업 런 2 만 건** (결과 버림) — JIT · HikariCP · Hibernate 캐시 예열
+5. **SAGA 정지 대기** — `orders.PENDING = 0` 까지 (약 6~8 분)
+6. 모니터링 시작 → **본 측정 5 만 건**
+
+3·4·5 는 모두 이번 측정 과정에서 발견한 오염원에 대응해 추가한 단계다 (뒤의 "하네스 결함" 참조).
+
+## 결과
+
+| 구성 | **소진 시간** | 단축 배율 | p50 | **p95** | p99 | cart_add p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 대 | **272.8 s** | — | 1,229.7 ms | **1,686.1 ms** | 1,833.0 ms | 1,656.5 ms |
+| 2 대 | **167.4 s** | **1.63×** | 695.8 ms | **1,477.3 ms** | 1,913.5 ms | 1,423.6 ms |
+| 4 대 | **124.2 s** | **2.20×** | 380.3 ms | **1,285.2 ms** | 1,880.3 ms | 1,246.0 ms |
+
+- 세 구성 모두 50,000 건 완주, **에러율 0 %**, `interrupted iterations` 0
+- 1 → 2: p95 **−12.4 %**, 소진 시간 1.63 배, 처리량 +62.9 %
+- 1 → 4: p95 **−23.8 %**, 소진 시간 2.20 배, 처리량 +119.8 %
+
+### 소진 시간 효율 (이상적 선형 확장 대비)
+
+```
+1 → 2 :  1.63 / 2 = 81.5 %
+1 → 4 :  2.20 / 4 = 55.0 %
+2 → 4 :  1.35 / 2 = 67.4 %
 ```
 
-- `docker compose run k6` 의 기본 동작은 `depends_on` 트리 전체를 다시 `up` 시도
-- k6 → gateway 의존성 따라 orderapi 가 다시 띄워지며 **이전 `--scale orderapi=N` 설정이 default (1) 로 리셋**
-- 결과: orderapi-2/3/4 가 Started 직후 즉시 Stopped → 측정 내내 N=1 인스턴스만 active
-- 증거: 모든 회차에서 `MySQL Threads_connected = 11` 고정 (1 인스턴스 × 풀 10 + 베이스라인 1)
+## 자원 사용
 
-**Fix**: `docker compose run --rm --no-deps k6 ...` — 의존성 리셋 차단.
-
-이 fix 적용 후 측정한 본 회차에서 비로소 진짜 다중 인스턴스 동작이 관측됨:
-
-| 회차 | MySQL Threads_connected (max) | LB 분배 동작 여부 |
-|---|---|---|
-| 1~4차 (--no-deps 전) | 11 (모든 실험에서 동일) | ❌ 사실상 N=1 |
-| **본 회차 (--no-deps 후)** | **11 / 21 / 41** (E1/E2/E3) | ✅ 정상 분배 |
-
-## 결과 요약
-
-| 지표 | E1 (1) | E2 (2) | E3 (4) |
-|---|---|---|---|
-| iteration (= 주문 시도) | 9,520 | 9,292 | 9,674 |
-| **throughput (req/s)** | 96.1 | 93.7 | 97.4 |
-| order p50 (ms) | 21.3 | 20.5 | 21.8 |
-| order p90 (ms) | 33.1 | 28.5 | 32.5 |
-| order p95 (ms) | 41.3 | 32.3 | 38.0 |
-| order max (ms) | 364 | 230 | 996 |
-| order 성공률 (check) | 99.95 % | 99.97 % | 99.93 % |
-| 멱등성 위반 | 0 | 0 | 0 |
-
-## 모니터링 측정값 (5초 간격, 부하 5분 평균 / p95 / max)
-
-### 컨테이너 CPU 사용률 (%)
-
-| 컨테이너 | E1 avg/p95/max | E2 avg/p95/max | E3 avg/p95/max | 한도 |
-|---|---|---|---|---|
-| **userapi** | **191 / 213 / 213** | **193 / 214 / 214** | **195 / 214 / 214** | 200 (2 CPU) |
-| orderapi-1 | 42 / 72 / 72 | 45 / 152 / 152 | 32 / 150 / 150 | 200 |
-| orderapi-2 | — | **39 / 99 / 99** | **40 / 174 / 174** | 200 |
-| orderapi-3 | — | — | **36 / 152 / 152** | 200 |
-| orderapi-4 | — | — | **37 / 164 / 164** | 200 |
-| kafka | 32 / 158 / 158 | 28 / 175 / 175 | 37 / 191 / 191 | unlimited |
-| gateway | 17 / 77 / 77 | 15 / 36 / 36 | 17 / 67 / 67 | 100 (1 CPU) |
-| mysql-order | 16 / 20 / 20 | 20 / 24 / 24 | 19 / 25 / 25 | unlimited |
-| mysql-user | 5 / 9 / 9 | 7 / 25 / 25 | 6 / 11 / 11 | unlimited |
-| redis | 2 / 5 / 5 | 3 / 5 / 5 | 3 / 5 / 5 | unlimited |
-
-### MySQL 상태
-
-| 지표 | E1 | E2 | E3 |
-|---|---|---|---|
-| Threads_connected | 11 | **21** | **41** |
-| Threads_running (avg/max) | 2.2 / 4 | 2.4 / 4 | 3.0 / 7 |
-| queries/sec | 700 | 708 | 782 |
+| 구성 | orderapi CPU (한도 200) | 인스턴스 간 편차 | gateway (한도 100) | mysql-order (무제한) | userapi (한도 200) | `Threads_connected` |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 대 | **198.1 (99 %)** 🔥 | — | 34.8 | 56.8 | 24.4 | 11 |
+| 2 대 | **196.5 (98 %)** 🔥 | ±0.1 % | 60.4 | 98.6 | 24.6 | 21 |
+| 4 대 | 177.6 (89 %) | ±3.2 % | **79.5** | **136.2** | 26.5 | 41 |
 
 ## 핵심 발견
 
-### 발견 1. Spring Cloud LB 분배 메커니즘은 정상 동작
+### 1. LB 분배 메커니즘 정상 동작 — 두 독립 지표로 교차 검증
 
-E3 의 orderapi-1, 2, 3, 4 가 모두 평균 32~40 % CPU, p95 150~174 % 로 **균일하게 부하 분담**.
-MySQL Threads_connected 가 1 → 2 → 4 인스턴스에 정확히 비례 (11 → 21 → 41) → 모든 인스턴스가 HikariCP 풀을 lazy-init 할 만큼 트래픽 받음.
+- **인스턴스 간 CPU 편차 ±0.1 ~ 3.2 %** (통과선 ±10 %)
+- **`Threads_connected` = 10N + 1** (11 / 21 / 41) — HikariCP 기본 풀 10 이 인스턴스마다 lazy-init 됐다는 것은
+  모든 인스턴스가 실제로 트래픽을 받았다는 뜻이다. CPU 와 독립된 지표라 교차 검증이 된다.
 
-→ ADR-005 의 핵심 가정 "lb:// 가 N 인스턴스에 round-robin 분배" 는 **정상 동작 확인**.
-**단, 이 검증은 측정 인프라 버그를 잡은 후에 비로소 가능**했음.
+ADR-005 의 핵심 가정 "`lb://` 가 N 인스턴스에 round-robin 분배" 는 **정상 동작 확인**.
 
-### 발견 2. 그러나 throughput 은 여전히 flat (96 → 94 → 97 req/s)
+### 2. 1 → 2 구간에서 확장 효과가 가장 크다
 
-orderApi 인스턴스를 4 배 늘렸음에도 throughput 변화 < 4 %. LB 가 정상 분배하더라도 system throughput 이 천장에 닿아 있음.
+1 대와 2 대는 orderApi 가 CPU 한도에 붙어 있고(99 %, 98 %) 증설이 그대로 성능으로 전환된다
+(소진 시간 효율 81.5 %). 4 대에서 89 % 로 내려오면서 효율이 67.4 % 로 꺾인다.
 
-원인은 두 개 layer:
+### 3. 4 대에서 병목이 orderApi 를 떠난다
 
-**(a) userApi CPU saturated (193~195 % 평균, 2 CPU 한도)**
+| | 1 대 | 2 대 | 4 대 |
+| --- | --- | --- | --- |
+| orderapi | **99 %** | **98 %** | 89 % |
+| gateway | 35 % | 60 % | **80 %** |
+| mysql-order | 56.8 | 98.6 | **136.2** |
 
-userApi 는 단일 인스턴스로 다음을 동시 처리:
-- HTTP login 요청 (k6 setup 시 1000 회 BCrypt)
-- PaymentConsumer: ORDER_CREATED 수신 → Customer 잔액 차감 → PaymentDeducted 발행
-- RefundConsumer: STOCK_RESERVATION_FAILED 수신 → 환불
-- OutboxPoller: 1 초 주기로 Kafka 발행
+orderApi 가 여유를 갖는 대신 gateway 와 MySQL 로 부하가 이동한다. **p99 는 세 구성 모두
+1,833 ~ 1,913 ms 로 거의 움직이지 않는다** — 꼬리 지연은 인스턴스 증설로 해소되지 않았다.
 
-평균 193~195 % CPU = 2 코어 거의 saturated. orderApi 가 더 많은 ORDER_CREATED 를 발행해도 userApi 가 이걸 따라잡지 못함.
+### 4. 자원 튜닝으로는 p95 를 더 낮추지 못했다
 
-**단, 본 측정의 HTTP throughput 은 cart_add + order 만 측정** — userApi 의 PaymentConsumer 처리는 비동기라 HTTP 응답 시간에 직접 영향 X. 그렇다면 왜 HTTP throughput 도 flat 한가?
+4 대 기준으로 아래를 모두 시험했으나 **개선에 성공한 것이 없다** (상세는 커밋 이력 참조).
 
-**(b) k6 VU 모델의 자연적 throughput cap**
+| 조치 | p95 변화 |
+| --- | --- |
+| CPU 주기 100 → 20 ms | **+33.0 %** (스로틀 7~10 % → 49~66 %) |
+| CPU 주기 100 → 200 ms | −2.5 % (노이즈 안) |
+| gateway 1 → 2 CPU | −6.7 % (노이즈 안) |
+| HikariCP 풀 10 → 30 | +17.0 % |
+| orderapi 2 → 3 CPU | +22.7 % (스로틀은 0 % 로 소멸) |
 
-각 VU 의 iteration: `login(cached)` → `cart_add` → `order` → `sleep(0.1s)`.
-cart_add 의 aggregate http_req_duration p95 가 여전히 ~6 초 (이전 회차와 유사).
-- iteration time ≈ cart_add p95 (~6s) + order (~30ms) + sleep (0.1s) ≈ 6.1s
-- 200 VU × (1 / 6.1s) ≈ 33 iter/s = ~66 req/s (cart + order 합산) + 추가 ≈ **96 req/s 천장**
+특히 **orderapi 를 3 CPU 로 올리면 CPU 스로틀이 0 % 로 사라지는데도 p95 가 나빠졌고, 사용량은
+185.9 → 176.9 로 오히려 줄었다.** orderApi 는 CPU 를 더 요구하고 있던 게 아니다.
 
-→ orderApi 가 N 배 빨라져도 **cart_add 의 단일 호출 시간이 안 줄면 VU 가 빨리 다음 iteration 으로 못 넘어가 시스템 throughput 천장 동일**. 이건 워크로드 모델의 한계이지 ADR-005 의 한계가 아님.
+`Threads_connected` 를 41 → 121 로 늘려도 `Threads_running` 은 19.33 → 17.75 로 변하지 않아
+**DB 커넥션 풀도 병목이 아님**이 확인됐다.
 
-### 발견 3. order p95 는 미미하게 개선 (LB 의 진짜 효과는 여기)
+## 하네스 결함 (측정 중 발견 · 수정)
 
-| 인스턴스 | E1 | E2 | E3 |
-|---|---|---|---|
-| order p50 | 21.3 | 20.5 | 21.8 |
-| order p90 | 33.1 | 28.5 | 32.5 |
-| **order p95** | **41.3** | **32.3** | **38.0** |
+세 건 모두 **k6 가 정상으로 보고하는 상태에서 조용히 측정을 무효화**하고 있었다.
 
-E1 → E2 p95 -22 % 개선 (41.3 → 32.3 ms). 단 E2 → E3 는 다시 약간 증가 (38 ms) — outlier 영향 가능.
+| 결함 | 증상 | 수정 |
+| --- | --- | --- |
+| 장바구니 껍데기 누적 | `removeZeroCountItems` 가 아이템이 빈 `Cart.Product` 를 안 지워 카트가 무한 누적. `refreshCart` 가 매 주문 전 상품을 조회해 **주문당 쿼리가 25 → 113 으로 증가**. 20 분 런에서 qps +92 % | k6 상품 선택을 VU 고정으로 (`35cc0d0`) |
+| 시드 `balance_history` 누락 | 잔액 검증이 `customer.balance` 가 아니라 `customer_balance_history` 최신 행을 읽는데 시드가 그 행을 안 만들어 **SAGA 결제가 전건 실패**. 주문 10,000 건 전부 FAILED 인데 k6 는 `order fail 0.00%` 보고 | 시드에 초기 행 추가 (`b785044`) |
+| `db-seed` 테이블 레이스 | 대기 조건이 `customer`/`product` 만 폴링하는데 `order.sql` 이 `outbox_events` 도 건드려, Flyway 가 만들기 전 시작하면 `exit 1`. 상품이 없어 `cart_add` 전건 실패인데 주문 요청 자체가 0 건이라 실패율이 0 % 로 보고 | 시드가 건드리는 테이블 전체 대기 (`2e31410`) |
 
-→ order endpoint 자체는 인스턴스 수에 약간 민감. cart_add 가 자연 throttle 역할을 하지만, 동시 도착이 분산되는 효과는 있음.
+## 측정의 한계
 
-### 발견 4. 멱등성 위반 0 — 다인스턴스에서도 안정
-
-이전 측정 회차들에서 보였던 멱등성 위반 8 / 3 건은 **본 회차에서는 0**. 직전 측정 회차가 실제로는 N=1 이었으니 멱등성 위반은 측정 noise (k6 의 body 비교 false-positive) 였을 가능성. 본 회차 (진짜 N=4) 에서 0 건이라는 것은 ADR-001 의 다인스턴스 멱등성이 잘 동작함을 시사.
-
-### 발견 5. 자원 활용도 분포
-
-| 자원 | E3 사용률 | 평가 |
-|---|---|---|
-| **userapi** | 195 % / 200 % (98 %) | 🔥 **천장** |
-| kafka | 37 % avg, peak 191 % | bursty, 평균 여유 |
-| **gateway** | 17 % avg, peak 67 % | 여유 (단일 인스턴스라도 OK) |
-| orderapi (×4) | 36 % avg, peak 150~175 % | 여유 (1 CPU 정도 사용) |
-| mysql-order | 19 % avg, peak 25 % | 여유 |
-| mysql-user | 6 % avg, peak 11 % | 매우 여유 |
-| redis | 3 % avg | idle |
-
-→ 다음 시나리오 측정에서 천장을 풀려면 **userApi 다중화 + Kafka 파티션 수 증가** 가 핵심.
-
-## 합격 기준 평가
-
-| 조건 | 통과선 | 실측 | 결과 |
-|---|---|---|---|
-| E1 → E2 p95 감소율 | ≥ 30 % | -22 % | ❌ 근접 |
-| E2 → E3 throughput 증가율 | ≥ 70 % | +4 % | ❌ |
-| 각 인스턴스 분배 균등성 | ±10 % | E3 4 인스턴스 32~40 % avg (분배는 됨) | ✅ |
-| 에러율 (order check) | < 0.5 % | 0.05 / 0.03 / 0.07 % | ✅ |
-| 멱등성 위반 | 0 | 0 / 0 / 0 | ✅ |
-| PENDING 잔여 | 0 | (server-side 측정 필요) | — |
-
-→ **LB 가 의도대로 분배는 하지만 (분배 균등성/에러율/멱등성 ✅), throughput · p95 개선은 미달** (워크로드 모델 + userApi 천장).
-
-## ADR-005 의 결정 갱신 제안
-
-원안 (Proposed): "orderApi 다중 인스턴스로 트래픽 분산"
-
-본 측정 결론:
-1. **메커니즘 자체는 동작 확인** ✅ — Spring Cloud LB + Eureka 가 4 인스턴스 round-robin 분배
-2. **HTTP throughput 증가는 워크로드 의존** — 현재 k6 cart→order 패턴에서는 cart_add 의 iteration time 이 천장. 더 짧은 iteration / 더 많은 VU 필요
-3. **SAGA throughput 은 userApi 다중화 필요** — orderApi 다중화는 SAGA 처리량에 직접 영향 X
-
-**ADR-005 의 상태**: "**제안 (Proposed)**" 그대로 유지하되, 다음 두 조건 하에 다시 측정해야 의도된 효과 정량 확인 가능:
-- 워크로드: cart_add 가 throughput cap 이 되지 않도록 setup 단계로 옮기거나 order-only 부하
-- 시스템: userApi 도 2 인스턴스 + Kafka 파티션 4 로 SAGA 천장 동시 완화
-
-## 측정 자체의 한계 (자가 비판)
-
-- **Eureka registry CSV 파싱 버그** — `grep -A1` 패턴이 multi-instance JSON 의 첫 인스턴스만 추출. MySQL Threads_connected 정보로 우회했지만 직접 검증은 미수행. jq 사용으로 보강 필요.
-- **k6 per-instance hits 카운터** — 추가했지만 VU 별 모듈 스코프 객체라 전체 합산 미가능. 추후 `--out json` 로 raw 이벤트 dump 후 별도 집계.
-- **cart_add p95 측정값** — k6 summary 에서 직접 노출 안 됨. 추정치 (aggregate p95 - order p95) 기반.
-
-## 부록 A. order-only 측정 (cart_add 자연 throttle 제거)
-
-원래 측정 워크로드 (`cart_add → order` 매 iteration) 에서는 cart_add 의 ~6 초 latency 가
-order endpoint 의 burst 부하를 가로막아 ADR-005 의 LB 효과가 안 드러났음. 이를 해소하기
-위해 별도 시나리오 `load-test-order-only.js` 를 추가:
-
-- **setup() 단계**: 200 사용자 login + 카트에 count=10,000 사전 시딩 (1 회만)
-- **default 함수**: `POST /customer/cart/order` 만 호출 (think time 없음)
-- VU 와 사용자 1:1 매핑으로 카트 race condition 회피
-
-### 결과
-
-| 지표 | E1o (1) | E2o (2) | E3o (4) | E1o → E2o | E1o → E3o |
-|---|---|---|---|---|---|
-| **throughput (req/s)** | **280** | **480** | **620** | **+71 %** | +121 % |
-| iterations | 83,991 | 144,337 | 186,916 | +72 % | +123 % |
-| order p50 (ms) | 600 | 183 | 173 | -69 % | -71 % |
-| order p90 (ms) | 703 | 684 | 539 | -3 % | -23 % |
-| order p95 (ms) | 781 | 750 | 680 | -4 % | -13 % |
-| order max (ms) | 2,610 | 3,277 | 3,529 | — | — |
-| 에러율 | 0 % | 0 % | 0 % | — | — |
-
-### 자원 사용률 — 병목 위치가 단계적으로 이동
-
-| 컨테이너 | E1o avg/max | E2o avg/max | E3o avg/max | 한도 |
-|---|---|---|---|---|
-| orderapi-1 | **178 / 210** | 148 / 213 | 116 / 180 | 200 |
-| orderapi-2 | — | 140 / 206 | 129 / 199 | 200 |
-| orderapi-3 | — | — | 115 / 173 | 200 |
-| orderapi-4 | — | — | 117 / 183 | 200 |
-| **mysql-order** | 55 / 73 | 83 / 124 | **113 / 177** | unlimited |
-| userapi | 35 / 101 | 52 / 91 | 41 / 78 | 200 |
-| gateway | 36 / 52 | 37 / 58 | 57 / 83 | 100 |
-| kafka | 54 / 133 | 34 / 105 | 37 / 101 | unlimited |
-
-→ **E1o**: orderApi 2 CPU 한도 saturated (avg 178 %, max 210 %)
-→ **E2o**: orderApi 부담 분산, MySQL 부담 증가 시작 (83 % avg)
-→ **E3o**: orderApi 한가해짐 (avg 115~129 %), **MySQL 이 새 병목** (avg 113 %)
-
-### ADR-005 합격 기준 (order-only 기준)
-
-| 조건 | 통과선 | E1o → E2o 실측 | 결과 |
-|---|---|---|---|
-| **E1 → E2 throughput 증가율** | ≥ 70 % | **+71 %** | ✅ **통과** |
-| E1 → E2 p50 감소율 | (참고) | -69 % | ✅ |
-| 인스턴스 분배 균등성 | ±10 % | E3o 의 4 인스턴스 모두 115~129 % avg | ✅ |
-| 에러율 | < 0.5 % | 0 % | ✅ |
-| PENDING / 멱등성 위반 | 0 | (server-side 측정 필요) | — |
-
-→ **ADR-005 의 LB 효과가 order-only 워크로드에서는 정량적으로 입증됨.**
-
-### E2o → E3o 의 sub-linear scaling 의 정체
-
-E1o → E2o = +71 % (선형 +100 % 의 71 %), E2o → E3o = +29 % (선형 +100 % 의 29 %).
-인스턴스 4 배 늘렸는데 throughput 2.2 배만 — 나머지는 어디로?
-
-답: **MySQL 이 새 병목으로 전이**. E2o 에서 이미 mysql-order 가 83 % avg (E1o 55 %),
-E3o 에서 113 % avg (max 177 %). orderApi 가 처리 능력을 늘려도 그 SELECT/INSERT 들이
-MySQL 단일 노드에서 직렬화되어 천장에 닿음.
-
-ADR-005 자체의 효과는 E1o → E2o 에서 명확. E3o 이상으로 가려면 MySQL 도 같이 풀어야 함
-(read replica, 파티셔닝, connection pool 조정 등 별도 ADR 영역).
-
-### 원래 (cart+order) 워크로드와 order-only 비교
-
-| 워크로드 | E1 throughput | E3 throughput | 변화 | 의미 |
-|---|---|---|---|---|
-| **cart + order** | 96 req/s | 97 req/s | flat | cart_add 의 6초 자연 throttle 이 천장 |
-| **order-only** | **280 req/s** | **620 req/s** | **+121 %** | order endpoint 의 진짜 capacity 가 드러남 |
-
-→ 측정 모델의 차이가 결과를 완전히 바꿈. ADR-005 의 효과를 측정하려면 **천장에 닿게 만드는
-워크로드 설계가 본질적으로 중요**하다는 메타 교훈.
-
-## 후속 작업 (별도 ADR / 측정)
-
-### 확정된 사실
-- ADR-005 의 LB 분배 메커니즘 ✅
-- E1 → E2 throughput +71 % ✅ (합격 기준 충족, order-only)
-- MySQL 이 N ≥ 2 부터 새 병목으로 전이
-
-### 권장 후속
-- **ADR-006 (제안)**: MySQL read replica + connection pool 튜닝으로 E3 이상의 scaling 회복
-- **ADR-007 (제안)**: userApi 다중화 + Kafka 파티션 수 증가로 SAGA throughput 개선
-  (원래 워크로드의 userApi 195 % saturated 해소)
-- **ADR-008 (제안)**: IdempotencyService 의 Redis SETNX 다인스턴스 race 강화
-
-### 인프라 버그 (별도 PR)
-- `docker compose run` 의 `--no-deps` 미포함 시 `--scale` 이 리셋되는 패턴을
-  README / 운영 가이드에 명시
-- Eureka registry CSV 파싱 (`grep -A1` → `jq`) 으로 multi-instance JSON 처리 개선
+- **4 인스턴스 구간의 런 간 재현성이 낮다** — 처리량 스프레드 약 17 %. 1 대(포화 상태)는 1.3 % 로
+  안정적인 반면, 4 대는 어떤 컴포넌트도 한도에 닿지 않아 호스트 경합에 좌우된다.
+  **이 구간에서 5~10 % 차이를 단일 런으로 논할 수 없다.**
+- **p95 를 만드는 원인이 미규명** — CPU · DB 커넥션 · MySQL · gateway · 호스트 자원이 모두 배제됐다.
+  남은 후보는 애플리케이션 직렬화 구간, k6 부하 발생기, 도커 브리지 네트워크다.
+- **SAGA 처리율이 인스턴스 수와 무관하게 약 48 orders/s 로 고정** — 접수는 183 → 403 /s 로 2.2 배
+  빨라졌는데 확정 처리는 그대로다. 단일 userApi 가 병목이며 ADR-005 범위 밖이다.
+- **SAGA 완료 시간을 재지 않는다** — 부하 중 미확정 주문이 계속 쌓이지만 이 하네스는 접수 응답만 측정한다.

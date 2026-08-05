@@ -1,21 +1,40 @@
 """k6 결과 3개(1/2/4 instance)를 읽어 인스턴스 스케일에 따른 개선을 비교한다 (cross-run).
-per-run 상세 지표(latency/throughput/에러율/분배)는 k6 handleSummary
-(실행 직후 stdout · {label}-summary.json)가 담당한다. 여기서는 실험 간 비교만."""
+per-run 상세 지표(latency/에러율/분배)는 k6 handleSummary
+(실행 직후 stdout · {label}-summary.json)가 담당한다. 여기서는 실험 간 비교만.
+
+주 지표는 소진 시간과 p95 다.
+  - 소진 시간: shared-iterations 로 주문 N 건을 다 처리하는 데 걸린 시간 = 버스트 흡수 능력.
+  - p95: 버스트 중 사용자가 겪는 지연.
+k6 의 iterations.rate 는 공용 풀이 비면서 동시성이 떨어지는 꼬리 구간까지 분모에 넣어
+처리량을 과소평가하므로(같은 조건에서 -18% 관측) 참고값으로만 출력한다.
+"""
 import json
 from pathlib import Path
 
 LABELS = ('1_instance', '2_instance', '4_instance')
+N_OF = {'1_instance': 1, '2_instance': 2, '4_instance': 4}
 
 
 def load(label, results_dir):
-    f = results_dir / f'{label}-k6-summary.json'
-    if not f.exists():
+    """소진 시간은 handleSummary 가 쓴 {label}-summary.json, 지연은 k6 원본 요약에서 읽는다."""
+    k6f = results_dir / f'{label}-k6-summary.json'
+    sumf = results_dir / f'{label}-summary.json'
+    if not k6f.exists():
         return None
-    with f.open(encoding='utf-8') as fp:
+    with k6f.open(encoding='utf-8') as fp:
         m = json.load(fp).get('metrics', {})
+    order = m.get('http_req_duration{name:order_create}', {})
+
+    run_ms = None
+    if sumf.exists():
+        with sumf.open(encoding='utf-8') as fp:
+            run_ms = json.load(fp).get('run_duration_ms')
+
     return {
-        'p99': m.get('http_req_duration{name:order_create}', {}).get('p(99)'),
-        'tps': m.get('iterations', {}).get('rate'),   # 초당 완료주문수 = handleSummary throughput 과 동일 정의
+        'run_s': run_ms / 1000 if run_ms else None,
+        'p95': order.get('p(95)'),
+        'p99': order.get('p(99)'),
+        'tps': m.get('iterations', {}).get('rate'),
     }
 
 
@@ -28,23 +47,34 @@ def main():
     data = {label: load(label, results_dir) for label in LABELS}
 
     base = data.get('1_instance')
-    if not base or base.get('p99') is None or base.get('tps') is None:
+    if not base or base.get('p95') is None:
         print('1_instance 결과가 없어 비교 불가 — 먼저 1_instance 측정 필요')
         return
 
     print('== 인스턴스 스케일 비교 (1_instance 기준) ==')
+    print(f'{"구성":<12}{"소진(s)":>9}{"p95(ms)":>10}{"p99(ms)":>10}{"주문/s":>9}'
+          f'{"단축배율":>10}{"p95감소":>10}{"소진효율":>10}')
     for label in LABELS:
         r = data.get(label)
-        if not r or r.get('p99') is None or r.get('tps') is None:
+        if not r or r.get('p95') is None:
             print(f'  {label}: (결과 없음)')
             continue
+        run_s = r['run_s']
+        row = (f'{label:<12}{run_s if run_s else 0:>9.1f}{r["p95"]:>10.1f}'
+               f'{r["p99"]:>10.1f}{r["tps"]:>9.1f}')
         if label == '1_instance':
-            print(f'  {label}: p99={r["p99"]:.1f}ms, throughput={r["tps"]:.1f} 주문/s  (기준)')
-        else:
-            p99_drop = (base['p99'] - r['p99']) / base['p99'] * 100   # (p99_1 − p99_N)/p99_1
-            tps_gain = (r['tps'] - base['tps']) / base['tps'] * 100   # (tps_N − tps_1)/tps_1
-            print(f'  {label}: p99={r["p99"]:.1f}ms, throughput={r["tps"]:.1f} 주문/s'
-                  f'  →  p99 감소율 {pct(p99_drop)}, throughput 증가율 {pct(tps_gain)}')
+            print(row + f'{"(기준)":>10}')
+            continue
+        # 단축 배율 = 1대 소진시간 / N대 소진시간, 소진 효율 = 단축 배율 / N (선형 확장 대비)
+        speedup = base['run_s'] / run_s if base['run_s'] and run_s else None
+        eff = speedup / N_OF[label] * 100 if speedup else None
+        p95_drop = (base['p95'] - r['p95']) / base['p95'] * 100
+        print(row + f'{speedup if speedup else 0:>9.2f}x{pct(p95_drop):>10}'
+                    f'{eff if eff else 0:>9.1f}%')
+
+    print()
+    print('  소진 시간은 setup(로그인) 포함값. 구성 간 USER_COUNT 가 같아야 비교 가능하다.')
+    print('  주문/s 는 shared-iterations 의 꼬리 구간 때문에 과소평가된다 (참고값).')
 
 
 if __name__ == '__main__':
