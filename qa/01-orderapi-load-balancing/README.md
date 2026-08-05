@@ -65,20 +65,13 @@ docker compose -f docker-compose.qa.yml up -d \
 # 3) 시드 완료 확인 — exit 0 이어야 한다.
 #    Flyway 레이스로 실패하면(exit 1) 상품이 없어 cart_add 가 전건 실패하는데,
 #    주문 요청 자체가 0 건이라 k6 는 "order fail 0.00%" 로 보고해 조용히 지나간다.
-until [ "$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' \
-        qa-orderapi-load-balancing-db-seed-1 2>/dev/null)" = "exited:0" ]; do
-    sleep 5
-done
+until [ "$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' qa-orderapi-load-balancing-db-seed-1 2>/dev/null)" = "exited:0" ]; do sleep 5; done
 
 # 4) 레지스트리 전파 대기
 #    Eureka 등록 → 서버 응답캐시(30s) → gateway fetch(30s) → LB 캐시(35s) 로 전파가
 #    최악 90 초 이상 걸린다. 고정 sleep 대신 registry 를 폴링해 N 개가 UP 인지 확인한다.
 #    (전파 전에 부하를 걸면 조용히 N=1 을 측정하게 된다)
-until [ "$(curl -s -H 'Accept: application/json' http://localhost:8761/eureka/apps \
-        | grep -o '"instanceId":"order-api' | wc -l)" -ge "$N" ] \
-   && [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/order/customer/cart)" = "403" ]; do
-    sleep 5
-done
+until [ "$(curl -s -H 'Accept: application/json' http://localhost:8761/eureka/apps | grep -o '"instanceId":"order-api' | wc -l)" -ge "$N" ] && [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/order/customer/cart)" = "403" ]; do sleep 5; done
 
 # 5) 워밍업 런 (결과 버림) — JIT·HikariCP·Hibernate 캐시가 데워지기 전 값은 2 배 이상 느리다
 #    --no-deps 필수 — 없으면 depends_on 재조정으로 orderapi 가 1 개로 스케일다운되어
@@ -92,11 +85,7 @@ exit
 # 6) SAGA 정지 대기 — 워밍업이 만든 백로그가 다 소진될 때까지 (약 6~8 분)
 #    비동기 파이프라인은 open-loop 라 접수(약 180~400/s)가 완료(약 48/s)를 앞질러
 #    백로그가 무한히 쌓인다. 남겨둔 채 측정하면 배경 부하가 구성마다 달라진다.
-until [ "$(docker exec qa-orderapi-load-balancing-mysql-order-1 \
-        mysql -uroot -proot orders -N -e \
-        "SELECT COUNT(*) FROM orders WHERE status='PENDING'")" = "0" ]; do
-    sleep 20
-done
+until [ "$(docker exec qa-orderapi-load-balancing-mysql-order-1 mysql -uroot -proot orders -N -e "SELECT COUNT(*) FROM orders WHERE status='PENDING'")" = "0" ]; do sleep 20; done
 
 # 7) 모니터링 시작 → results/$LABEL-*.csv 에 기록
 #    ★ 반드시 정지 대기 "뒤에" 켠다. 앞에서 켜면 워밍업 + 유휴 구간이 CSV 에 섞여
