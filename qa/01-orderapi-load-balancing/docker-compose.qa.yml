@@ -163,11 +163,19 @@ services:
       redis: { condition: service_healthy }
       kafka: { condition: service_healthy }
       eureka: { condition: service_healthy }
+    # CPU 한도를 cpus 대신 cpu_period/cpu_quota 로 표현한다 (N CPU = quota / period).
+    #   기본 200000/100000 = 2 CPU — 기존 cpus:'2' 와 동일.
+    # 주기를 줄이면 총량(듀티 사이클)은 그대로면서 스로틀 1 회당 정지 시간이 짧아진다.
+    # cgroup 은 주기마다 할당량을 강제하므로, 스레드가 많으면 큰 할당량도 주기 초반에
+    # 태우고 남은 시간을 통째로 멈춘다 (실측: orderapi 가 주기의 7~10.5% 에서 스로틀).
+    # 총 CPU 를 늘리면 중앙값이, 주기를 줄이면 꼬리(p95/p99)가 개선될 것으로 예상된다.
+    #   예: CPU_PERIOD=20000 ORDERAPI_QUOTA=40000 → 2 CPU 유지, 주기 20ms
+    cpu_period: ${CPU_PERIOD:-100000}
+    cpu_quota: ${ORDERAPI_QUOTA:-200000}
     deploy:
       replicas: ${ORDERAPI_REPLICAS:-1}   # 실험마다 export ORDERAPI_REPLICAS=N (기본 1). --scale 대신 env 주입.
       resources:
         limits:
-          cpus: '2'
           memory: 1G
     networks: [commerce]
 
@@ -184,12 +192,15 @@ services:
       eureka: { condition: service_healthy }
       userapi: { condition: service_started }
       orderapi: { condition: service_started }
+    # 기본 100000/100000 = 1 CPU. 4 인스턴스 측정에서 gateway 가 주기의 15.2% 에서
+    # 스로틀돼 (orderapi 7~10.5% 보다 잦다) 실질 제약으로 확인됐다.
+    # 자원을 늘리려면 GATEWAY_QUOTA, 고르게 쓰려면 CPU_PERIOD 를 조절한다.
+    #   예: CPU_PERIOD=20000 GATEWAY_QUOTA=20000 → 1 CPU 유지, 주기 20ms
+    cpu_period: ${CPU_PERIOD:-100000}
+    cpu_quota: ${GATEWAY_QUOTA:-100000}
     deploy:
       resources:
         limits:
-          # 4 인스턴스 측정에서 gateway 가 82.9/100 (peak 94.2) 로 새 병목이 됐다.
-          # GATEWAY_CPUS 로 한도를 바꿔가며 gateway 가 천장인지 검증한다.
-          cpus: ${GATEWAY_CPUS:-1}
           memory: 768M
     networks: [commerce]
 
