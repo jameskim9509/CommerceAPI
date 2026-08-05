@@ -1,0 +1,9 @@
+# Git for Windows 의 시스템 설정 core.autocrlf=true 는 체크아웃 시 텍스트 파일을
+# CRLF 로 바꾼다. 대부분의 파일에는 무해하지만 bash 가 실행하는 스크립트는 깨진다 —
+# \r 이 명령/변수값의 일부로 읽혀 `$'\r': command not found`, `RESULTS_DIR="results\r"`
+# 같은 실패가 난다 (qa/01-orderapi-load-balancing/monitor-stats.sh 사례).
+#
+# 셸이 해석하는 파일은 플랫폼과 무관하게 LF 로 고정한다.
+*.sh          text eol=lf
+gradlew       text eol=lf
+.githooks/*   text eol=lf
