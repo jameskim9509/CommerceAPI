@@ -158,6 +158,12 @@ services:
       # json-file 삼중 비용) 측정을 오염시킨다. 기본을 운영과 맞추고 필요 시 SHOW_SQL=true 로 켠다.
       SPRING_JPA_SHOW_SQL: ${SHOW_SQL:-false}
       SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: ${SHOW_SQL:-false}
+      # HikariCP 최대 풀 크기. 앱에 설정이 없어 Spring Boot 기본값 10 이 적용된다.
+      # 500 VU / 4 인스턴스면 인스턴스당 동시 요청 125 개가 커넥션 10 개를 두고 대기한다.
+      # 주문 1 건이 쿼리 16 개를 트랜잭션 안에서 처리하며 그 동안 커넥션을 점유하므로,
+      # MySQL 쪽 threads_running 이 낮아도(41 개 중 18.7) 앱 쪽 풀은 마를 수 있다.
+      # threads_connected = POOL x 인스턴스수 + 1 로 적용 여부를 확인한다.
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${HIKARI_POOL:-10}
     depends_on:
       mysql-order: { condition: service_healthy }
       redis: { condition: service_healthy }
