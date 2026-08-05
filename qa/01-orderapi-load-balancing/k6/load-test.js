@@ -167,9 +167,20 @@ export function handleSummary(data) {
     const m = data.metrics;
     const g = (k, f) => (m[k] && m[k].values && m[k].values[f] != null ? m[k].values[f] : null);
     const f1 = (v) => (typeof v === 'number' ? v.toFixed(1) : 'n/a');
+    // 버스트 소진 시간 — shared-iterations 의 핵심 지표.
+    // "주문 N 건이 한꺼번에 몰렸을 때 다 처리하는 데 걸린 시간" 이라 인스턴스 수에 따른
+    // 버스트 흡수 능력을 직접 비교할 수 있다. setup(로그인) 시간이 포함된 값이므로
+    // 구성 간 비교 시 setup 이 동일 조건(같은 USER_COUNT)이어야 한다.
+    // k6 의 iterations.rate 는 이 시간으로 나눈 값이라 램프다운 구간까지 분모에 들어가
+    // 처리량을 과소평가한다 — 버스트 비교에는 rate 대신 이 값을 쓴다.
+    // constant-vus 에서는 지정한 DURATION 과 같아지므로 의미가 없다.
+    const runMs = data.state && data.state.testRunDurationMs != null ? data.state.testRunDurationMs : null;
     const summary = {
         experiment: EXPERIMENT_LABEL,
+        executor: EXECUTOR,
+        vus: VUS,
         order_count: g('iterations', 'count'),
+        run_duration_ms: runMs,
         order_throughput_rps: g('iterations', 'rate'),
         order_p50: g('http_req_duration{name:order_create}', 'med'),
         order_p95: g('http_req_duration{name:order_create}', 'p(95)'),
@@ -179,8 +190,9 @@ export function handleSummary(data) {
         full_metrics: m,
     };
     const fr = summary.order_fail_rate;
-    const stdout = `\n=== orderApi LB (${EXPERIMENT_LABEL}) ===\n`
-        + `orders: ${summary.order_count}, order throughput: ${f1(summary.order_throughput_rps)} orders/s\n`
+    const stdout = `\n=== orderApi LB (${EXPERIMENT_LABEL}, ${EXECUTOR}, ${VUS} VUs) ===\n`
+        + `orders: ${summary.order_count}, 소진 시간: ${runMs != null ? (runMs / 1000).toFixed(1) : 'n/a'} s\n`
+        + `order throughput: ${f1(summary.order_throughput_rps)} orders/s\n`
         + `order p50/p95/p99: ${f1(summary.order_p50)} / ${f1(summary.order_p95)} / ${f1(summary.order_p99)} ms\n`
         + `cart_add p95: ${f1(summary.cart_add_p95)} ms\n`
         + `order fail: ${typeof fr === 'number' ? (fr * 100).toFixed(2) + '%' : 'n/a'}\n`;

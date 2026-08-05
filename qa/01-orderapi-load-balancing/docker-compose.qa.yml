@@ -152,6 +152,12 @@ services:
       USER_API_URL: http://gateway/user/customer
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
+      # application-test.yml 은 show-sql/format_sql 이 true 인데 운영(application-prod.yml)은
+      # 둘 다 false 다. 그대로 두면 운영과 다른 설정을 측정하게 된다. 부하 중 포맷된 SQL 이
+      # 인스턴스당 초당 2 만 줄 규모로 stdout 에 쏟아져(Hibernate 포매터 + Logback + docker
+      # json-file 삼중 비용) 측정을 오염시킨다. 기본을 운영과 맞추고 필요 시 SHOW_SQL=true 로 켠다.
+      SPRING_JPA_SHOW_SQL: ${SHOW_SQL:-false}
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: ${SHOW_SQL:-false}
     depends_on:
       mysql-order: { condition: service_healthy }
       redis: { condition: service_healthy }
