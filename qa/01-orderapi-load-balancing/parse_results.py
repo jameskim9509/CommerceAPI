@@ -30,7 +30,16 @@ def load(label, results_dir):
         with sumf.open(encoding='utf-8') as fp:
             run_ms = json.load(fp).get('run_duration_ms')
 
+    # 중단된 런(setup 도중 abort 등)도 handleSummary 는 정상 파일을 쓴다. 이때 no-op
+    # threshold 로 만들어진 order_create 서브메트릭은 값이 None 이 아니라 "0" 이라,
+    # p95 만 보면 무효 런이 "p95 0 ms" 라는 최고 성적으로 통과한다. 반복이 한 번도
+    # 완료되지 않았다는 사실(iterations 부재/0)로 판정해야 한다.
+    iters = m.get('iterations', {}).get('count')
+    if not iters:
+        return {'invalid': '반복 0건 — 런이 완료되지 않음 (setup 중단 등)'}
+
     return {
+        'invalid': None,
         'run_s': run_ms / 1000 if run_ms else None,
         'p95': order.get('p(95)'),
         'p99': order.get('p(99)'),
@@ -47,7 +56,7 @@ def main():
     data = {label: load(label, results_dir) for label in LABELS}
 
     base = data.get('1_instance')
-    if not base or base.get('p95') is None:
+    if not base or base.get('invalid') or base.get('p95') is None:
         print('1_instance 결과가 없어 비교 불가 — 먼저 1_instance 측정 필요')
         return
 
@@ -56,7 +65,13 @@ def main():
           f'{"단축배율":>10}{"p95감소":>10}{"소진효율":>10}')
     for label in LABELS:
         r = data.get(label)
-        if not r or r.get('p95') is None:
+        if not r:
+            print(f'  {label}: (결과 없음)')
+            continue
+        if r.get('invalid'):
+            print(f'  {label}: ⚠ 무효 — {r["invalid"]}')
+            continue
+        if r.get('p95') is None:
             print(f'  {label}: (결과 없음)')
             continue
         run_s = r['run_s']
