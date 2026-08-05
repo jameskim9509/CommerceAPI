@@ -158,20 +158,11 @@ services:
       # json-file 삼중 비용) 측정을 오염시킨다. 기본을 운영과 맞추고 필요 시 SHOW_SQL=true 로 켠다.
       SPRING_JPA_SHOW_SQL: ${SHOW_SQL:-false}
       SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: ${SHOW_SQL:-false}
-      # HikariCP 풀 크기는 앱 기본값(10)을 그대로 쓴다.
-      # 30 으로 늘려 시험했으나 threads_connected 는 41 -> 121 로 늘어난 반면
-      # threads_running 은 19.33 -> 17.75 로 오히려 줄어, 요청이 커넥션을 기다리고
-      # 있던 게 아님이 확인됐다 (p95 도 개선되지 않음). 병목이 아니므로 노브를 제거한다.
     depends_on:
       mysql-order: { condition: service_healthy }
       redis: { condition: service_healthy }
       kafka: { condition: service_healthy }
       eureka: { condition: service_healthy }
-    # CPU 한도 2 / 주기는 기본값(100ms). 아래를 시험했으나 모두 악화 또는 노이즈 수준이라
-    # 기본값으로 되돌렸다 (500 VU / 4 인스턴스 / 5만 건 버스트, p95 기준):
-    #   주기 100 -> 20ms   p95 +33.0%  (스로틀 7~10% -> 49~66%. 긴 주기가 버스트 완충이었다)
-    #   주기 100 -> 200ms  p95  -2.5%  (노이즈 안)
-    #   CPU  2 -> 3        p95 +22.7%  (스로틀은 0% 로 사라졌으나 사용량은 185.9 -> 176.9 로 감소)
     deploy:
       replicas: ${ORDERAPI_REPLICAS:-1}   # 실험마다 export ORDERAPI_REPLICAS=N (기본 1). --scale 대신 env 주입.
       resources:
@@ -193,9 +184,6 @@ services:
       eureka: { condition: service_healthy }
       userapi: { condition: service_started }
       orderapi: { condition: service_started }
-    # CPU 한도 1. 4 인스턴스 측정에서 주기의 15.2% 에서 스로틀돼 제약으로 의심됐으나,
-    # 2 CPU 로 올려도 평균 사용량이 82.9 -> 88.5 로 6.8% 늘 뿐이고 p95 는 -6.7%
-    # (노이즈 안) 라 실질 병목이 아님이 확인돼 기본값을 유지한다.
     deploy:
       resources:
         limits:
