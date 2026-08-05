@@ -81,8 +81,13 @@ until [ "$(curl -s -H 'Accept: application/json' http://localhost:8761/eureka/ap
 done
 
 # 5) 워밍업 런 (결과 버림) — JIT·HikariCP·Hibernate 캐시가 데워지기 전 값은 2 배 이상 느리다
+#    --no-deps 필수 — 없으면 depends_on 재조정으로 orderapi 가 1 개로 스케일다운되어
+#    조용히 N=1 을 측정하게 된다.
 EXPERIMENT_LABEL=warmup VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=20000 \
-    docker compose -f docker-compose.qa.yml run --rm --no-deps k6 run /scripts/load-test.js
+    docker compose -f docker-compose.qa.yml run --rm --no-deps --entrypoint sh k6
+#    ↓ 컨테이너 셸 안에서 (환경변수는 위 줄에서 주입돼 그대로 상속된다)
+k6 run /scripts/load-test.js
+exit
 
 # 6) SAGA 정지 대기 — 워밍업이 만든 백로그가 다 소진될 때까지 (약 6~8 분)
 #    비동기 파이프라인은 open-loop 라 접수(약 180~400/s)가 완료(약 48/s)를 앞질러
@@ -99,10 +104,12 @@ done
 rm -f /tmp/qa-monitor.lock
 bash monitor-stats.sh $LABEL &
 
-# 8) 본 측정 (--no-deps 필수 — 없으면 depends_on 재조정으로 orderapi 가 1 개로 스케일다운된다)
+# 8) 본 측정
 EXPERIMENT_LABEL=$LABEL VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=50000 \
-    docker compose -f docker-compose.qa.yml run --rm --no-deps \
-    k6 run --summary-export /results/$LABEL-k6-summary.json /scripts/load-test.js
+    docker compose -f docker-compose.qa.yml run --rm --no-deps --entrypoint sh k6
+#    ↓ 컨테이너 셸 안에서
+k6 run --summary-export /results/$EXPERIMENT_LABEL-k6-summary.json /scripts/load-test.js
+exit
 
 # 9) 모니터 종료
 rm -f /tmp/qa-monitor.lock
@@ -124,36 +131,9 @@ docker exec qa-orderapi-load-balancing-mysql-order-1 mysql -uroot -proot orders 
 docker compose -f docker-compose.qa.yml down -v
 ```
 
-> **Windows Git Bash 로 실행할 경우** 경로 변환 때문에 `/scripts/load-test.js` 가
-> `C:/Program Files/Git/scripts/load-test.js` 로 바뀌어 k6 가 파일을 못 찾는다.
-> 5·8 단계 앞에 `export MSYS_NO_PATHCONV=1` 을 두거나 WSL2 에서 실행한다.
-
-### k6 를 셸로 들어가서 돌리는 방식
-
-위 5·8 단계는 단발 실행(`run ... k6 run ...`)이라 스크립트로 묶기 쉽다. 컨테이너에 진입해
-직접 입력하는 방식도 그대로 쓸 수 있고, **경로 변환 문제를 원천적으로 피한다** — 컨테이너
-안에서 타이핑한 `/scripts/...` 는 Git Bash 를 거치지 않기 때문이다.
-
-```bash
-# 5) 워밍업 — 셸 진입 방식
-EXPERIMENT_LABEL=warmup VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=20000 \
-    docker compose -f docker-compose.qa.yml run --rm --no-deps --entrypoint sh k6
-#   컨테이너 안에서
-k6 run /scripts/load-test.js
-exit
-
-# 8) 본 측정 — 셸 진입 방식
-EXPERIMENT_LABEL=$LABEL VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=50000 \
-    docker compose -f docker-compose.qa.yml run --rm --no-deps --entrypoint sh k6
-#   컨테이너 안에서
-k6 run --summary-export /results/$EXPERIMENT_LABEL-k6-summary.json /scripts/load-test.js
-exit
-```
-
-- `--no-deps` 는 이 방식에도 **필수**다. 빠뜨리면 `depends_on` 재조정으로 orderapi 가 1 개로
-  스케일다운되어 조용히 N=1 을 측정하게 된다.
-- 환경변수는 `docker compose run` 줄에서 주입되며 컨테이너 셸에 그대로 상속된다.
-- 워밍업(5)과 본 측정(8) 사이에 호스트에서 SAGA 정지 대기(6)가 필요하므로 셸을 두 번 드나든다.
+> k6 는 컨테이너 셸에 진입해 실행한다. 5·8 사이에 호스트에서 SAGA 정지 대기(6)가
+> 필요하므로 셸을 두 번 드나든다. `/scripts/...` · `/results/...` 를 컨테이너 안에서
+> 입력하므로 Windows Git Bash 의 경로 변환 문제도 생기지 않는다.
 
 **N = 1, 2, 4 로 세 번 반복**한 뒤 분석:
 
