@@ -158,30 +158,25 @@ services:
       # json-file 삼중 비용) 측정을 오염시킨다. 기본을 운영과 맞추고 필요 시 SHOW_SQL=true 로 켠다.
       SPRING_JPA_SHOW_SQL: ${SHOW_SQL:-false}
       SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: ${SHOW_SQL:-false}
-      # HikariCP 최대 풀 크기. 앱에 설정이 없어 Spring Boot 기본값 10 이 적용된다.
-      # 500 VU / 4 인스턴스면 인스턴스당 동시 요청 125 개가 커넥션 10 개를 두고 대기한다.
-      # 주문 1 건이 쿼리 16 개를 트랜잭션 안에서 처리하며 그 동안 커넥션을 점유하므로,
-      # MySQL 쪽 threads_running 이 낮아도(41 개 중 18.7) 앱 쪽 풀은 마를 수 있다.
-      # threads_connected = POOL x 인스턴스수 + 1 로 적용 여부를 확인한다.
-      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${HIKARI_POOL:-10}
+      # HikariCP 풀 크기는 앱 기본값(10)을 그대로 쓴다.
+      # 30 으로 늘려 시험했으나 threads_connected 는 41 -> 121 로 늘어난 반면
+      # threads_running 은 19.33 -> 17.75 로 오히려 줄어, 요청이 커넥션을 기다리고
+      # 있던 게 아님이 확인됐다 (p95 도 개선되지 않음). 병목이 아니므로 노브를 제거한다.
     depends_on:
       mysql-order: { condition: service_healthy }
       redis: { condition: service_healthy }
       kafka: { condition: service_healthy }
       eureka: { condition: service_healthy }
-    # CPU 한도를 cpus 대신 cpu_period/cpu_quota 로 표현한다 (N CPU = quota / period).
-    #   기본 200000/100000 = 2 CPU — 기존 cpus:'2' 와 동일.
-    # 주기를 줄이면 총량(듀티 사이클)은 그대로면서 스로틀 1 회당 정지 시간이 짧아진다.
-    # cgroup 은 주기마다 할당량을 강제하므로, 스레드가 많으면 큰 할당량도 주기 초반에
-    # 태우고 남은 시간을 통째로 멈춘다 (실측: orderapi 가 주기의 7~10.5% 에서 스로틀).
-    # 총 CPU 를 늘리면 중앙값이, 주기를 줄이면 꼬리(p95/p99)가 개선될 것으로 예상된다.
-    #   예: CPU_PERIOD=20000 ORDERAPI_QUOTA=40000 → 2 CPU 유지, 주기 20ms
-    cpu_period: ${CPU_PERIOD:-100000}
-    cpu_quota: ${ORDERAPI_QUOTA:-200000}
+    # CPU 한도 2 / 주기는 기본값(100ms). 아래를 시험했으나 모두 악화 또는 노이즈 수준이라
+    # 기본값으로 되돌렸다 (500 VU / 4 인스턴스 / 5만 건 버스트, p95 기준):
+    #   주기 100 -> 20ms   p95 +33.0%  (스로틀 7~10% -> 49~66%. 긴 주기가 버스트 완충이었다)
+    #   주기 100 -> 200ms  p95  -2.5%  (노이즈 안)
+    #   CPU  2 -> 3        p95 +22.7%  (스로틀은 0% 로 사라졌으나 사용량은 185.9 -> 176.9 로 감소)
     deploy:
       replicas: ${ORDERAPI_REPLICAS:-1}   # 실험마다 export ORDERAPI_REPLICAS=N (기본 1). --scale 대신 env 주입.
       resources:
         limits:
+          cpus: '2'
           memory: 1G
     networks: [commerce]
 
@@ -198,15 +193,13 @@ services:
       eureka: { condition: service_healthy }
       userapi: { condition: service_started }
       orderapi: { condition: service_started }
-    # 기본 100000/100000 = 1 CPU. 4 인스턴스 측정에서 gateway 가 주기의 15.2% 에서
-    # 스로틀돼 (orderapi 7~10.5% 보다 잦다) 실질 제약으로 확인됐다.
-    # 자원을 늘리려면 GATEWAY_QUOTA, 고르게 쓰려면 CPU_PERIOD 를 조절한다.
-    #   예: CPU_PERIOD=20000 GATEWAY_QUOTA=20000 → 1 CPU 유지, 주기 20ms
-    cpu_period: ${CPU_PERIOD:-100000}
-    cpu_quota: ${GATEWAY_QUOTA:-100000}
+    # CPU 한도 1. 4 인스턴스 측정에서 주기의 15.2% 에서 스로틀돼 제약으로 의심됐으나,
+    # 2 CPU 로 올려도 평균 사용량이 82.9 -> 88.5 로 6.8% 늘 뿐이고 p95 는 -6.7%
+    # (노이즈 안) 라 실질 병목이 아님이 확인돼 기본값을 유지한다.
     deploy:
       resources:
         limits:
+          cpus: '1'
           memory: 768M
     networks: [commerce]
 
