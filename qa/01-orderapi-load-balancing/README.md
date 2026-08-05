@@ -68,19 +68,23 @@ docker compose -f docker-compose.qa.yml down -v
 docker compose -f docker-compose.qa.yml up -d \
     mysql-user mysql-order redis kafka eureka userapi orderapi gateway db-seed
 
-# 3) 시드 + 레지스트리 전파 대기
-docker compose -f docker-compose.qa.yml wait db-seed
-# Eureka 등록 → 서버 응답캐시(30s) → gateway fetch(30s) → LB 캐시(35s) 로 전파가
-# 최악 90 초 이상 걸린다. 고정 sleep 대신 registry 를 폴링해 N 개가 UP 인지 확인한다.
-# (전파 전에 부하를 걸면 조용히 N=1 을 측정하게 된다)
+# 3) 시드 완료 확인 — exit 0 이어야 한다.
+#    Flyway 레이스로 실패하면(exit 1) 상품이 없어 cart_add 가 전건 실패하는데,
+#    주문 요청 자체가 0 건이라 k6 는 "order fail 0.00%" 로 보고해 조용히 지나간다.
+until [ "$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' \
+        qa-orderapi-load-balancing-db-seed-1 2>/dev/null)" = "exited:0" ]; do
+    sleep 5
+done
+
+# 4) 레지스트리 전파 대기
+#    Eureka 등록 → 서버 응답캐시(30s) → gateway fetch(30s) → LB 캐시(35s) 로 전파가
+#    최악 90 초 이상 걸린다. 고정 sleep 대신 registry 를 폴링해 N 개가 UP 인지 확인한다.
+#    (전파 전에 부하를 걸면 조용히 N=1 을 측정하게 된다)
 until [ "$(curl -s -H 'Accept: application/json' http://localhost:8761/eureka/apps \
         | grep -o '"instanceId":"order-api' | wc -l)" -ge "$N" ] \
    && [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/order/customer/cart)" = "403" ]; do
     sleep 5
 done
-
-# 4) 모니터링 백그라운드 → results/$LABEL-*.csv에 기록
-bash monitor-stats.sh $LABEL &
 
 # 5) 워밍업 런 (결과 버림) — JIT·HikariCP·Hibernate 캐시가 데워지기 전 값은 2 배 이상 느리다
 EXPERIMENT_LABEL=warmup VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=20000 \
@@ -95,17 +99,40 @@ until [ "$(docker exec qa-orderapi-load-balancing-mysql-order-1 \
     sleep 20
 done
 
-# 7) 본 측정 (--no-deps 필수 — 없으면 depends_on 재조정으로 orderapi 가 1 개로 스케일다운된다)
+# 7) 모니터링 시작 → results/$LABEL-*.csv 에 기록
+#    ★ 반드시 정지 대기 "뒤에" 켠다. 앞에서 켜면 워밍업 + 유휴 구간이 CSV 에 섞여
+#      analyze_monitoring.py 의 CPU 평균이 희석된다.
+rm -f /tmp/qa-monitor.lock
+bash monitor-stats.sh $LABEL &
+
+# 8) 본 측정 (--no-deps 필수 — 없으면 depends_on 재조정으로 orderapi 가 1 개로 스케일다운된다)
 EXPERIMENT_LABEL=$LABEL VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=50000 \
     docker compose -f docker-compose.qa.yml run --rm --no-deps \
     k6 run --summary-export /results/$LABEL-k6-summary.json /scripts/load-test.js
 
-# 8) 모니터 종료
+# 9) 모니터 종료
 rm -f /tmp/qa-monitor.lock
 
-# 9) 정리 후 다음 N 으로
+# 10) 유효성 가드 확인 — ★ down -v 전에. DB 를 지우면 확인할 수 없다.
+#     (a) 전 인스턴스 트래픽 수신: Threads_connected = 10N + 1
+docker exec qa-orderapi-load-balancing-mysql-order-1 mysql -uroot -proot -N -e \
+    "SELECT VARIABLE_VALUE FROM performance_schema.global_status
+      WHERE VARIABLE_NAME='Threads_connected'"
+#     (b) SAGA 동작: FAILED 0 · CONFIRMED > 0
+#         측정 직후 PENDING 이 많이 남는 건 정상이다 (접수가 완료보다 4 배 빠르다).
+#         FAILED 가 잡히면 시드의 customer_balance_history 누락을 의심한다.
+docker exec qa-orderapi-load-balancing-mysql-order-1 mysql -uroot -proot orders -e \
+    "SELECT status, COUNT(*) FROM orders GROUP BY status"
+#     (c) 인스턴스별 CPU 편차 · MySQL 부하
+python analyze_monitoring.py
+
+# 11) 정리 후 다음 N 으로
 docker compose -f docker-compose.qa.yml down -v
 ```
+
+> **Windows Git Bash 로 실행할 경우** 경로 변환 때문에 `/scripts/load-test.js` 가
+> `C:/Program Files/Git/scripts/load-test.js` 로 바뀌어 k6 가 파일을 못 찾는다.
+> 5·8 단계 앞에 `export MSYS_NO_PATHCONV=1` 을 두거나 WSL2 에서 실행한다.
 
 **N = 1, 2, 4 로 세 번 반복**한 뒤 분석:
 
