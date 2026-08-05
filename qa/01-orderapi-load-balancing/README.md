@@ -28,28 +28,22 @@ qa/01-orderapi-load-balancing/
 
 ## 측정 모델 요약
 
-| 항목            | 값                                                                        |
-| --------------- | ------------------------------------------------------------------------- |
-| 측정 대상       | `POST /order/customer/cart, POST order/customer/cart/order` 응답 시간  |
-| 워크로드        | **constant-vus** — 500 VUs 를 5 분간 유지 (총 주문 수는 결과값)     |
+| 항목            | 값                                                                               |
+| --------------- | -------------------------------------------------------------------------------- |
+| 측정 대상       | `POST /order/customer/cart, POST order/customer/cart/order` 응답 시간         |
 | 워크로드        | **shared-iterations** — 500 VUs 로 주문 5 만 건 버스트 (런 시간은 결과값) |
-| 반복 단위       | `cart_add → order` (VU:유저 1:1, VU:상품 1:1)                          |
-| 측정 지표       | **버스트 소진 시간**, 주문 응답 p50/**p95**/p99, 에러율                 |
-| 실험            | 인스턴스 x 1 / 인스턴스 x 2 / 인스턴스 x 4                            |
-| 인스턴스당 자원 | 2 CPU / 1 GB                                                              |
+| 반복 단위       | `cart_add → order` (VU:유저 1:1, VU:상품 1:1)                                 |
+| 측정 지표       | **버스트 소진 시간**, 주문 응답 p50/**p95**/p99, 에러율              |
+| 보조 지표       | 인스턴스 별 CPU 사용률, MySQL 스레드 부하                                        |
+| 실험            | 인스턴스 x 1 / 인스턴스 x 2 / 인스턴스 x 4                                   |
+| 인스턴스당 자원 | 2 CPU / 1 GB                                                                     |
 
+이 워크로드는 closed-loop 다 — VU 가 응답을 받아야 다음 요청을 보내므로 요청 백로그가
+VU 수(500)를 넘지 않는다. 지연이 늘면 도착률이 함께 줄어 큐가 무한히 쌓이지 않는다.
 
-`EXECUTOR` 로 두 부하 모델을 고른다. 둘 다 closed-loop 다 — VU 가 응답을 받아야 다음 요청을
-보내므로 요청 백로그가 VU 수를 넘지 않는다 (백로그가 쌓이는 건 `constant-arrival-rate`).
-
-| EXECUTOR | 고정하는 것 | 결과값 | 쓰는 곳 |
-| --- | --- | --- | --- |
-| `shared-iterations` (기본) | 총 주문 수 `ORDER_COUNT` | 런 시간 | **버스트 흡수 능력** — 소진 시간 비교 |
-| `constant-vus` | 런 시간 `DURATION` | 총 주문 수 | 정상 상태 처리량 비교 |
-
-> `shared-iterations` 는 공용 풀이 비면서 동시성이 500 → 0 으로 떨어지는 꼬리가 생겨
-> k6 가 보고하는 `throughput(orders/s)` 을 과소평가한다 (같은 조건에서 -18% 관측).
-> **버스트 비교에는 rate 가 아니라 소진 시간(`run_duration_ms`)을 쓴다.**
+> **처리량은 k6 의 `throughput(orders/s)` 대신 소진 시간을 쓴다.** `shared-iterations` 는
+> 공용 풀이 비면서 동시성이 500 → 0 으로 떨어지는 꼬리가 생기고, 그 구간이 분모에 들어가
+> rate 를 과소평가한다 (같은 조건에서 -18% 관측). 소진 시간은 요약의 `run_duration_ms` 다.
 
 ## 실행
 
@@ -123,8 +117,8 @@ docker exec qa-orderapi-load-balancing-mysql-order-1 mysql -uroot -proot -N -e \
 #         FAILED 가 잡히면 시드의 customer_balance_history 누락을 의심한다.
 docker exec qa-orderapi-load-balancing-mysql-order-1 mysql -uroot -proot orders -e \
     "SELECT status, COUNT(*) FROM orders GROUP BY status"
-#     (c) 인스턴스별 CPU 편차 · MySQL 부하
-python analyze_monitoring.py
+#     (c) 인스턴스별 CPU 편차·MySQL 부하는 CSV 에 남으므로 세 회차를 마친 뒤 한 번에 본다
+#         (analyze_monitoring.py 는 1/2/4 세 라벨을 모두 읽는다)
 
 # 11) 정리 후 다음 N 으로
 docker compose -f docker-compose.qa.yml down -v
@@ -133,6 +127,33 @@ docker compose -f docker-compose.qa.yml down -v
 > **Windows Git Bash 로 실행할 경우** 경로 변환 때문에 `/scripts/load-test.js` 가
 > `C:/Program Files/Git/scripts/load-test.js` 로 바뀌어 k6 가 파일을 못 찾는다.
 > 5·8 단계 앞에 `export MSYS_NO_PATHCONV=1` 을 두거나 WSL2 에서 실행한다.
+
+### k6 를 셸로 들어가서 돌리는 방식
+
+위 5·8 단계는 단발 실행(`run ... k6 run ...`)이라 스크립트로 묶기 쉽다. 컨테이너에 진입해
+직접 입력하는 방식도 그대로 쓸 수 있고, **경로 변환 문제를 원천적으로 피한다** — 컨테이너
+안에서 타이핑한 `/scripts/...` 는 Git Bash 를 거치지 않기 때문이다.
+
+```bash
+# 5) 워밍업 — 셸 진입 방식
+EXPERIMENT_LABEL=warmup VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=20000 \
+    docker compose -f docker-compose.qa.yml run --rm --no-deps --entrypoint sh k6
+#   컨테이너 안에서
+k6 run /scripts/load-test.js
+exit
+
+# 8) 본 측정 — 셸 진입 방식
+EXPERIMENT_LABEL=$LABEL VUS=500 EXECUTOR=shared-iterations ORDER_COUNT=50000 \
+    docker compose -f docker-compose.qa.yml run --rm --no-deps --entrypoint sh k6
+#   컨테이너 안에서
+k6 run --summary-export /results/$EXPERIMENT_LABEL-k6-summary.json /scripts/load-test.js
+exit
+```
+
+- `--no-deps` 는 이 방식에도 **필수**다. 빠뜨리면 `depends_on` 재조정으로 orderapi 가 1 개로
+  스케일다운되어 조용히 N=1 을 측정하게 된다.
+- 환경변수는 `docker compose run` 줄에서 주입되며 컨테이너 셸에 그대로 상속된다.
+- 워밍업(5)과 본 측정(8) 사이에 호스트에서 SAGA 정지 대기(6)가 필요하므로 셸을 두 번 드나든다.
 
 **N = 1, 2, 4 로 세 번 반복**한 뒤 분석:
 
