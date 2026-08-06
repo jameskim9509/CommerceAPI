@@ -9,9 +9,14 @@
 # 실행 자체는 하지 않는다 — 이미 끝난 run 들을 읽어 표로 만들 뿐.
 #
 # 브랜치 = arm 이라 control 과 treatment 는 각 브랜치에서 따로 돌리고 따로 집계한다:
-#   control/no-defense (tag v1) 에서 C-run1..N → ./aggregate-runs.sh C   (무방어 N 분포)
-#   방어 브랜치 (feature/main)  에서 T-run1..N → ./aggregate-runs.sh T   (방어   r 분포)
+#   control/no-defense              에서 C-run1..N → ./aggregate-runs.sh C   (무방어 N 분포)
+#   방어 브랜치(V6 멱등키 마이그레이션이 있는 쪽) 에서 T-run1..N → ./aggregate-runs.sh T   (방어 r 분포)
 #   → 두 AGGREGATE 의 중앙값을 비교: N(control) → r(treatment)
+#
+# ★ 태그 v1/v2 를 arm 으로 쓰지 말 것 — 무방어 앱 코드는 맞지만 하네스가 구버전이라
+#   verify 출력 토큰이 달라 이 스크립트가 전부 '?' 로 읽는다(→ ⟨측정전⟩).
+# ★ main 은 V6__add_order_idempotency_key.sql 이 병합되기 전까지 treatment arm 이 될 수 없다.
+# ★ 아래 BRANCH 는 '집계를 실행한 시점의 HEAD' 일 뿐 런의 출처가 아니다 — 해당 arm 브랜치에서 돌릴 것.
 #
 # ADR-008 §재현 하네스 4: 전 run 원값·중앙값·범위 공표(점추정 금지). 한 번만(N=1) 돌려도 되지만 리포트에 명시.
 # =============================================================================
@@ -62,7 +67,7 @@ fi
 
 vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); crs=(); mismatched=()
 {
-    echo "# ADR-008 정합성 측정 집계 — arm=$PREFIX (branch=$BRANCH)"
+    echo "# ADR-008 정합성 측정 집계 — arm=$PREFIX (집계 실행 시점 HEAD=$BRANCH)"
     echo ""
     echo "| run | ORDER_TARGET | ARRIVAL_RATE | 총 위반 건수(N/r) | ① | ② | ③ | ④ | ⑤ | 카오스잔여 | money_leak(원) |"
     echo "|----:|-------------:|-------------:|------------------:|---:|---:|---:|---:|---:|-----------:|---------------:|"

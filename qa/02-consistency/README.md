@@ -53,7 +53,11 @@ qa/02-consistency/
 
 - RAM 8GB / 8CPU 여유공간
 - WSL2 또는 Bash
-- Docker (compose 환경)
+- Docker — `docker compose wait` 를 쓰므로 Compose v2.20 이상
+- **k6 컨테이너의 인터넷 접근** — `k6/load-test-consistency.js` 가 `https://jslib.k6.io/k6-utils/1.4.0/index.js` 를
+  런타임에 받아온다. 막혀 있으면 `k6 run` 이 시작조차 하지 못한다.
+- **포트 3306 / 3307 / 6379 / 9092 / 8080 / 8761 이 비어 있을 것** — `01-load-balancing` 스택이나
+  로컬 MySQL·Redis 와 동시에 띄울 수 없다 (compose project 는 분리돼 있지만 호스트 포트는 겹친다).
 
 ## 환경변수
 
@@ -67,21 +71,37 @@ qa/02-consistency/
 | `DB_CONN_TIMEOUT_MS` | `1000` (하한 250ms) | HikariCP`connectionTimeout`(ms)                  | T2 재현 (**10 × connectionTimeout**이 DB 중단 시간보다 짧아야 재시도가 소진되고 **이벤트 영구 유실**이 발생 )                                                                                                                                     |
 | `ORDER_TARGET`       | `100000`            | k6 목표 주문 수                                    | 목표 주문수에 도달할 때까지 시나리오 진행                                                                                                                                                                                                                         |
 | `ARRIVAL_RATE`       | `200` (실측 `90`) | k6 도착률(RPS)                                     | 서버에 지속적 요청 부하를 생성.**실측 20런은 90 을 썼다** — 200 은 preAllocatedVUs 300/maxVUs 800 으로 감당되는지 미검증이고, 도착률 미달이 나면 카오스 앵커 환산(t = N ÷ rate)까지 어긋난다. **k6 와 chaos-schedule.sh 에 반드시 같은 값을 줄 것** |
-| `RICH_POOL`          | `300`               | 시드 고객 풀 크기                                  | 시나리오 참여 대상 고객수 (동시사용자수 X)                                                                                                                                                                                                                        |
+| `RICH_POOL`          | `300`               | k6 가 쓰는 고객 수 (시드 크기 아님)                | k6 가 `ctrich1..N` 으로 로그인·주문한다. **시드는 300명 고정**(`seed/user.sql`) 이라 300 을 넘기면 없는 계정을 불러 `setup_token_missing` 만 늘 뿐 시드는 커지지 않는다 — 풀을 바꾸려면 `seed/user.sql` 의 `WHERE n <= 300` 도 함께 고칠 것                       |
 | `RUN_LABEL`          | `unknown`           | 산출물 파일명 접두어                               |                                                                                                                                                                                                                                                                   |
 
 ## 실행
 
 **무방어 브랜치**와 **방어 브랜치**에서 같은 절차를 그대로 돌려 두 측정을 얻는다.
+두 arm 은 **앱 소스 6파일만 다르고 `qa/02-consistency/` 하네스는 바이트 동일**하다
+(`IdempotencyService` · 양 모듈 `IdempotentEventHandler` · `ProductItem` · `Customer` · `RefundConsumer`).
+
+| arm              | 체크아웃 대상                               | 비고                                            |
+| ---------------- | ------------------------------------------- | ----------------------------------------------- |
+| control (무방어) | `control/no-defense`                        | 방어 5종 OFF. 하네스는 방어 브랜치와 동일       |
+| treatment (방어) | `feature/72-consistency-seed-selfcontained` | main 병합 후에는 `main` (단, 아래 V6 주의 참조) |
 
 1. 브랜치 변경 및 이미지 빌드
 
 ```bash
-git checkout v2                                  # 무방어(control) — control/no-defense 의 하네스 갱신본
+git checkout control/no-defense                  # 무방어(control). 방어는 위 표의 treatment 브랜치로
 cd qa/02-consistency
 docker compose -f docker-compose.qa.yml build    # 이미지 재빌드
 ```
 
+> **태그 `v1`·`v2` 로 체크아웃하지 말 것.** 둘 다 `control/no-defense` 의 조상이라 무방어 앱 코드는 맞지만
+> **하네스가 구버전**이다 — `verify-consistency.sh` 가 `총 위반 건수`·`장애별 위반(건)`·`카오스잔여`·
+> `arm(실측 거동)` 을 아예 출력하지 않아 아래 §판정 표와 맞지 않고, `aggregate-runs.sh` 가 전 항목을
+> `?` 로 읽어 `⟨측정전⟩` 만 낸다. `run-batch.sh` 도 없다. 게다가 체크아웃하는 순간 이 README 자체가
+> 구버전으로 바뀌어 다른 절차를 보게 된다.
+>
+> **`main` 도 treatment arm 이 될 수 없다** (병합 전까지) — `V6__add_order_idempotency_key.sql` 이 없어
+> `orders.idempotency_key` 컬럼이 생기지 않고, ①(`v1`)·`a_T3`·`d1` 과 VU 대조가 통째로 측정 불가가 된다.
+>
 > **arm 을 바꿀 때는 이미지를 명시적으로 지운 뒤 빌드할 것.**
 >
 > ```bash
@@ -110,6 +130,12 @@ docker compose -f docker-compose.qa.yml up -d --wait \
     mysql-user mysql-order redis kafka eureka userapi orderapi gateway
 docker compose -f docker-compose.qa.yml up -d db-seed
 
+# ★ 앱 컨테이너가 실제로 떴는지 확인 — DB_CONN_TIMEOUT_MS 가 낮으면 JDBC 로그인 타임아웃도 함께
+#   내려가(max(1,(500+ct)/1000)초) 풀 초기화 fail-fast 로 크래시루프에 빠질 수 있다.
+#   PoolInitializationException 이 보이면 DB_CONN_TIMEOUT_MS=2000 으로 올리고 다시 기동할 것.
+docker compose -f docker-compose.qa.yml logs orderapi userapi \
+    | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
+
 # 시드 + 레지스트리 전파 대기
 docker compose -f docker-compose.qa.yml wait db-seed
 sleep 60               
@@ -121,7 +147,7 @@ k6 run /scripts/load-test-consistency.js
 exit
 
 # 비동기 흐름 종료 대기 → 검증
-bash quiescence-gate.sh
+RUN_LABEL=$LABEL bash quiescence-gate.sh        # RUN_LABEL 을 줘야 -quiescence.log 가 남는다
 RUN_LABEL=$LABEL bash verify-consistency.sh
 docker compose -f docker-compose.qa.yml down -v
 ```
@@ -150,7 +176,10 @@ docker compose -f docker-compose.qa.yml up -d --wait \
     mysql-user mysql-order redis kafka eureka userapi orderapi gateway
 docker compose -f docker-compose.qa.yml up -d db-seed
 
-# 3) 시드 + 레지스트리 전파 대기
+# 3) 앱 기동 확인 → 시드 + 레지스트리 전파 대기
+#    (PoolInitializationException 이면 DB_CONN_TIMEOUT_MS=2000 으로 올리고 재기동 — 2번 항목 참조)
+docker compose -f docker-compose.qa.yml logs orderapi userapi \
+    | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
 docker compose -f docker-compose.qa.yml wait db-seed
 sleep 60               
 
@@ -167,8 +196,11 @@ k6 run /scripts/load-test-consistency.js
 exit
 
 # 7) 카오스 종료 → 비동기 흐름 종료 대기 → 검증
-kill $CHAOS_PID 2>/dev/null   
-bash quiescence-gate.sh                                 # 비동기 흐름 종료 대기
+#    ★ 자식(sleep·docker)까지 정리해야 한다 — 스케줄만 죽이면 주입 중이던 docker 명령이 남는다.
+kill $CHAOS_PID 2>/dev/null
+pkill -P $CHAOS_PID 2>/dev/null
+wait $CHAOS_PID 2>/dev/null
+RUN_LABEL=$LABEL bash quiescence-gate.sh                # 비동기 흐름 종료 대기 (-quiescence.log 산출)
 RUN_LABEL=$LABEL bash verify-consistency.sh             # 판정 결과 확인
 
 # 8) 정리 후 다음 run 으로
@@ -194,16 +226,23 @@ docker compose -f docker-compose.qa.yml down -v
 
 ```bash
 bash run-batch.sh C 1 10        # C-run1 … C-run10
-bash run-batch.sh C smoke       # C-smoke (무카오스 소부하)
-bash run-batch.sh C 6 10        # 폐기된 런만 재측정
+bash run-batch.sh C smoke       # C-smoke (무카오스 소부하 — 2,000건·rate 50, 위 판정기준과 동일 조건)
+bash run-batch.sh C 6 10        # 번호 구간 재측정 (폐기된 런을 다시 돌릴 때 그 번호로 지정)
 ```
+
+> 본 런의 도착률은 `ARRIVAL_RATE`(기본 `90`) 로 k6·chaos 양쪽에 같은 값이 자동 주입된다.
+> 스모크는 판정기준과 맞추려고 `SMOKE_RATE`(기본 `50`) 를 따로 쓴다.
 
 5. 반복된 결과 집계
 
 ```bash
-./aggregate-runs.sh C           # 무방어 부랜치
-./aggregate-runs.sh T           # 방어 브랜치
+./aggregate-runs.sh C           # 무방어 브랜치 (control/no-defense 에서)
+./aggregate-runs.sh T           # 방어 브랜치 (treatment 브랜치에서)
 ```
+
+> 집계는 `results/` 의 파일만 읽으므로 어느 브랜치에서 돌려도 수치는 같지만, 리포트 머리말의
+> `branch=` 는 **집계를 실행한 시점의 HEAD** 를 찍는다. 산출물의 출처로 읽히지 않게 해당 arm 의
+> 브랜치에서 돌릴 것.
 
 ## 통합 시나리오 구성 (기본 10만 건)
 

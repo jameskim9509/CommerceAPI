@@ -3,8 +3,11 @@
 # ADR-008 정합성 측정 — 런 배치 드라이버 (README §실행 3 의 수동 절차를 그대로 자동화)
 #
 # 사용: bash run-batch.sh <PREFIX> <START> <END>
-#   예) bash run-batch.sh C 1 10     → C-run1 … C-run10
-#       bash run-batch.sh C smoke    → C-smoke (무카오스 소부하 스모크)
+#   예) bash run-batch.sh C 1 10     → C-run1 … C-run10        (10만건 · rate ARRIVAL_RATE · 카오스 ON)
+#       bash run-batch.sh C smoke    → C-smoke                 (2천건 · rate SMOKE_RATE · 무카오스)
+#
+# ★ arm = 브랜치다. control 은 control/no-defense, treatment 는 방어 브랜치에서 각각 돌린다.
+#   (태그 v1/v2 는 하네스가 구버전이라 이 스크립트 자체가 없다 — README §실행 1 참조)
 #
 # 절차(README §실행 3 과 1:1):
 #   down -v → up -d --wait → db-seed → sleep 60 → chaos(백그라운드) → k6 → chaos kill
@@ -29,6 +32,9 @@ export USERAPI_REPLICAS="${USERAPI_REPLICAS:-2}"
 export DB_CONN_TIMEOUT_MS="${DB_CONN_TIMEOUT_MS:-1000}"
 export ARRIVAL_RATE="${ARRIVAL_RATE:-90}"
 export RICH_POOL="${RICH_POOL:-300}"
+# ★ 스모크는 본 런과 도착률이 다르다 — README §실행 2 의 판정기준이 "2,000건·rate 50·무카오스"
+#   실측으로 잡혀 있어, 여기서 90 으로 돌리면 그 표와 다른 조건이 된다.
+SMOKE_RATE="${SMOKE_RATE:-50}"
 
 log() { echo "[batch $(date -u +%H:%M:%S)] $*"; }
 
@@ -92,6 +98,7 @@ run_one() {
 }
 
 if [ "$MODE" = "smoke" ]; then
+    export ARRIVAL_RATE="$SMOKE_RATE"      # 판정기준(2,000건·rate 50)과 같은 조건으로 맞춘다
     run_one "${PREFIX}-smoke" 2000 no
 else
     for i in $(seq "$MODE" "$END"); do

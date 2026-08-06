@@ -6,7 +6,9 @@
 #   - kafka KAFKA_CFG_NUM_PARTITIONS: 4 → orderApi 4인스턴스 × 4파티션 병렬 소비로 ② 재고·④ 잔액 @Version 경합 발화
 #   - redis / kafka 볼륨 없음(ephemeral) → 주변 장애 T3(멱등키 유실)·T4(kafka 로그 전소) 카오스 주입 대상
 #
-# control(무방어) 실행은 무방어 브랜치(control/no-defense, tag v1) 체크아웃 후 재빌드(gradle bootJar → compose build)로 한다 (방어 5종 OFF; 오버레이 없음).
+# control(무방어) 실행은 무방어 브랜치(control/no-defense) 체크아웃 후 재빌드(compose build)로 한다 (방어 5종 OFF; 오버레이 없음).
+#   ★ 태그 v1/v2 가 아니라 브랜치 tip 을 쓴다 — 두 태그는 control/no-defense 의 조상이라 앱 코드는 같지만
+#     하네스가 구버전이고(verify 출력 토큰 상이, run-batch.sh 부재) README 절차와 맞지 않는다.
 #
 # -----------------------------------------------------------------------------
 # ★ DB_CONN_TIMEOUT_MS (기본 1000) — T2(이벤트 드롭)를 "재현"시키기 위한 QA 전용 값
