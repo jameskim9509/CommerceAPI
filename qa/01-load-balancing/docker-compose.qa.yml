@@ -90,8 +90,8 @@ services:
 
   eureka:
     build:
-      context: ../../eurekaServer
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: eurekaServer/Dockerfile
     ports:
       - "8761:8761"
     healthcheck:
@@ -109,8 +109,8 @@ services:
 
   userapi:
     build:
-      context: ../../userApi
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: userApi/Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
       MYSQL_HOST: mysql-user
@@ -138,8 +138,8 @@ services:
   # ADR-005 측정 대상. --scale orderapi=N 으로 N 인스턴스 기동.
   orderapi:
     build:
-      context: ../../orderApi
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: orderApi/Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
       MYSQL_HOST: mysql-order
@@ -166,8 +166,8 @@ services:
 
   gateway:
     build:
-      context: ../../gateway
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: gateway/Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: test
       EUREKA_SERVER_URL: http://eureka:8761/eureka/
@@ -207,8 +207,8 @@ services:
       - |
         set -e
         echo "[db-seed] waiting for Flyway-created tables ..."
-        until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM customer LIMIT 1' >/dev/null 2>&1; do sleep 3; done
-        until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM product  LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        until mysql -h mysql-user  -uroot -proot user   -e 'SELECT 1 FROM outbox_events LIMIT 1' >/dev/null 2>&1; do sleep 3; done
+        until mysql -h mysql-order -uroot -proot orders -e 'SELECT 1 FROM outbox_events LIMIT 1' >/dev/null 2>&1; do sleep 3; done
         echo "[db-seed] seeding scenario self-contained fixtures ..."
         mysql -h mysql-user  -uroot -proot user   < /seed/user.sql
         mysql -h mysql-order -uroot -proot orders < /seed/order.sql

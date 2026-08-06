@@ -1,164 +1,363 @@
-# 시나리오 02 — 주문 정합성 통합 시나리오 (ADR-008)
+# 주문 정합성 통합 시나리오 (ADR-008)
 
 > 상위 개요: [../README.md](../README.md) · 명세: [ADR-008](../../ADR/008-order-consistency-integration-scenario.md)
 
-개별 정합성 메커니즘(ADR-001 멱등성 · ADR-002 재고 낙관적 락 · ADR-003 SAGA 보상 · ADR-004 Outbox ·
-⑤ 잔액 낙관적 락 · ⑥ 이벤트 중복/역순 dedup)이 **한 부하 안에서 동시에 발화**할 때 최종 DB 상태가
-정합함을, **무방어(control) vs 방어(treatment) 집계 KPI `N→r`** 와 **교차 DB 불변식**으로 입증한다.
+정합성관련 상황(중복결제 · 초과판매 · 환불 · 동시 다중 주문시 잔액 Lost Update · 이벤트 중복/역순)이 **한 부하 안에서 동시에 발화**할 때 최종 DB 상태가 정합함(**집계 KPI `N→r`**)을 입증한다.
 
-> **측정치는 전부 `⟨측정전⟩`.** 이 폴더는 "실행 가능한 하네스"를 제공하며, 실측은
-> 각 브랜치(무방어/방어)에서 QA 를 돌린 뒤 [results/MEASUREMENT_REPORT.md](results/MEASUREMENT_REPORT.md) 에 채운다.
+> 이 디렉토리는 "실행 가능한 하네스"를 제공하며, 실측은 각 브랜치(무방어/방어)에서 QA 를 돌린 뒤 [results/MEASUREMENT_REPORT.md](results/MEASUREMENT_REPORT.md) 에 채운다.
 
 ## 무엇을 발화·검증하는가
 
-**원하는 장애 6종**(전용 방어를 구현했고 이 시나리오가 의도적으로 발화):
-① 중복 주문/결제 · ② 재고 초과판매 · ③ 결제 후 재고 실패→환불 · ④ 잔액 부족→결제 실패 · ⑤ 잔액 동시성 Lost Update · ⑥ 이벤트 중복/역순 배달.
+**의도된 장애**:
 
-**주변 장애 T1–T4**(아직 방어 없음 — 넣으면 깨진다, 복원력 gap 노출):
-T1 reserveStock↔마커 비원자 → 정상 CONFIRMED 오환불 · T2 에러핸들러/DLT 부재 → 이벤트 드롭 ·
-T3 Redis 멱등키 유실 → 중복 주문 · T4 Kafka 로그 전소 → 이벤트 소실. (상세는 ADR-008 §주변 장애)
+1. 중복 주문/결제
+2. 재고 초과판매
+3. 재고 소진→환불
+4. 동시 다중 주문시 잔액 Lost Update
+5. 이벤트 중복 배달에 의한 중복 처리
 
-## 측정 모델 — 무방어 vs 방어 집계 (N → r)
+**주변 장애**:
 
-6개 방어를 **전부 끈 control** 과 **전부 켠 treatment(현재)** 를 **같은 부하·같은 bounded 고정 카오스 스케줄**로
-돌려 교차 DB 불변식 위반 총수를 비교한다. 두 arm 은 **git 브랜치**로 나뉜다(§실행).
+1. 주문 CONFIRMED 커밋과 이벤트 처리 이력 커밋 사이에 장애발생 → 공짜 주문
+2. 에러 발생시 10회 재시도 후 이벤트 드롭
+3. Redis 멱등키 유실시 중복 주문 허용
+4. Kafka 로그 전소시 이벤트 소실
 
-- **control (무방어)** → desired 위반 대량 + 카오스 잔여 ≈ **N**
-- **treatment (현재)** → desired 방어(→0) + 카오스 잔여 ≈ **r** (0 아님)
-- **KPI = N → r** — "6개 정합성 방어 설계로 통합 부하에서 정합성 위반 N → 소수 r 감소".
-  r>0 은 6개 방어 대상이 아닌 주변 장애 T1–T4 가 **양쪽 arm 에 똑같이** 남기 때문.
+## 측정 모델 — 무방어 vs 방어 집계
 
-### 이건 "개별 귀속 없는 집계 주장"이다 (한계)
+```
+N = ① + ② + ③ + ④ + ⑤ + 카오스잔여(T1~T4)        (전부 '건' 단위)
+```
 
-- **개별 귀속 불가** — "`@Version`이 초과판매를 막았다"는 못 하고 "6개 방어 설계가 위반을 N→r 줄였다"만 주장.
-- **N 은 증폭됨** — ① 없으면 중복주문 → ②⑤ 경합 폭증. 근본원인 하나가 하류 위반 여럿을 낳는다.
-- **①(멱등)은 9개 SQL 불변식에 안 잡힘** — k6 `duplicate_order_responses` 를 집계 N 에 함께 포함한다.
-- (⑤ 잔액 락만 예외로 `f0a48d5~1` vs `f0a48d5` git 짝 실험을 단일변수 보조 증거로 붙일 수 있음.)
+- **control (무방어)** → 의도된 정합성 오류 + 카오스 잔여 ≈ **N**
+- **treatment (방어)** → 의도된 정합성 오류(=0) + 카오스 잔여 ≈ **r**
+- **KPI = N → r** — "5개 정합성 방어 설계로 통합 부하에서 정합성 위반 N → r".
 
 ## 디렉토리 구조
 
 ```
 qa/02-consistency/
-├── docker-compose.qa.yml        QA 스택. name:consist · kafka 4파티션 · redis/kafka ephemeral (방어 상태는 브랜치가 결정)
-├── build-images.sh              현재 브랜치 소스로 이미지 빌드 (gradle bootJar → compose build)
-├── run-consistency.sh           1회 실행: up→seed→k6+chaos→quiescence→verify→down (라벨로 arm 구분)
-├── run-repeat.sh                현재 브랜치에서 N회 반복 + 집계 → results/<prefix>-AGGREGATE.md (median·range)
-├── chaos-schedule.sh            bounded T1–T4 를 부하 진행도(20/40/60/80%)에 앵커해 각 1회 주입
-├── quiescence-gate.sh           정착 게이트 (outbox=0 ∧ PENDING/PAID=0 ∧ lag=0 이 K회 연속)
-├── verify-consistency.sh        교차 DB 3대 불변식 / 9개 체크 판정 (+ ① k6 dup 집계)
-├── k6/load-test-consistency.js  constant-arrival-rate 부하 (85/8/5/2 mix + 멱등 재전송 overlay)
-├── seed/scenario/
-│   ├── user.sql                 ctrich{1..300}(10M) + ctbroke{1..60}(500) — 고객마다 balance_history 기준행 필수
-│   └── order.sql                hot SKU(id 10001, count 1000) + 정상 SKU 50×5(재고 충분)
-└── results/                     실행 산출물 (*-k6-summary.json, *-verify.txt, *-AGGREGATE.md)
-
-# 방어 상태 = git 브랜치 (arm):
-#   control(무방어) = 브랜치 control/no-defense (tag v1) = feature − 6개 방어 (QA 하네스 공유)
-#   treatment(방어) = feature / main
-# 운영 코드엔 방어-off 스위치가 없다(footgun 없음). 무방어 소스는 v1 브랜치에만 존재.
+├── docker-compose.qa.yml        QA용 스택
+├── chaos-schedule.sh            주변 장애 주입
+├── quiescence-gate.sh           비동기 흐름 종료 대기
+├── verify-consistency.sh        정합성 검증
+├── aggregate-runs.sh            run 결과 집계
+├── k6/load-test-consistency.js  통합 시나리오 스크립트
+├── seed/                        시드 데이터
+│   ├── user.sql
+│   └── order.sql
+└── results/                     실행 산출물
 ```
 
 ## 사전 요구사항
 
-- Docker daemon + 약 8GB / 8CPU (orderApi 4 + userApi + MySQL×2 + Kafka + Eureka + Gateway 동시 기동, 한 번에 하나의 스택)
-- 호스트 gradle 빌드 (Dockerfile 이 prebuilt `build/libs/*.jar` 를 COPY — Java 17)
-- Windows 는 Git Bash / WSL2 (스크립트가 `MSYS_NO_PATHCONV=1`)
+- RAM 8GB / 8CPU 여유공간
+- WSL2 또는 Bash
+- Docker — `docker compose wait` 를 쓰므로 Compose v2.20 이상
+- **k6 컨테이너의 인터넷 접근** — `k6/load-test-consistency.js` 가 `https://jslib.k6.io/k6-utils/1.4.0/index.js` 를
+  런타임에 받아온다. 막혀 있으면 `k6 run` 이 시작조차 하지 못한다.
+- **포트 3306 / 3307 / 6379 / 9092 / 8080 / 8761 이 비어 있을 것** — `01-load-balancing` 스택이나
+  로컬 MySQL·Redis 와 동시에 띄울 수 없다 (compose project 는 분리돼 있지만 호스트 포트는 겹친다).
 
-## 실행 — 브랜치 = arm
+## 환경변수
 
-방어 상태는 **체크아웃한 브랜치**가 결정한다. 각 브랜치에서 같은 QA 를 돌려 두 측정을 얻는다.
+모두 `docker-compose.qa.yml` 이 `${VAR:-기본값}` 으로 읽는다. 환경변수로 지정하지 않으면 기본값이 그대로 쓰인다.
+
+| 변수                   | 기본값                | 의미                                               | 사용 목적                                                                                                                                                                                                                                                         |
+| ---------------------- | --------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORDERAPI_REPLICAS`  | `4`                 | orderApi 인스턴스 수                               | 인스턴스 수를 늘려 병렬 처리에 대한 장애(2,5)를 재현                                                                                                                                                                                                              |
+| `USERAPI_REPLICAS`   | `2`                 | userApi 인스턴스 수 (SAGA 결제 컨슈머 처리량 상한) | 인스턴스 수를 늘려 병렬 처리에 대한 장애(4, 5)를 재현                                                                                                                                                                                                             |
+| `DB_POOL_SIZE`       | `30`                | HikariCP`maximumPoolSize` (양 서비스 공통)       | connection timeout까지 대기하느라 커넥션이 고갈되는 현상을 제거                                                                                                                                                                                                   |
+| `DB_CONN_TIMEOUT_MS` | `1000` (하한 250ms) | HikariCP`connectionTimeout`(ms)                  | T2 재현 (**10 × connectionTimeout**이 DB 중단 시간보다 짧아야 재시도가 소진되고 **이벤트 영구 유실**이 발생 )                                                                                                                                     |
+| `ORDER_TARGET`       | `100000`            | k6 목표 주문 수                                    | 목표 주문수에 도달할 때까지 시나리오 진행                                                                                                                                                                                                                         |
+| `ARRIVAL_RATE`       | `200` (실측 `90`) | k6 도착률(RPS)                                     | 서버에 지속적 요청 부하를 생성.**실측 20런은 90 을 썼다** — 200 은 preAllocatedVUs 300/maxVUs 800 으로 감당되는지 미검증이고, 도착률 미달이 나면 카오스 앵커 환산(t = N ÷ rate)까지 어긋난다. **k6 와 chaos-schedule.sh 에 반드시 같은 값을 줄 것** |
+| `RICH_POOL`          | `300`               | k6 가 쓰는 고객 수 (시드 크기 아님)                | k6 가 `ctrich1..N` 으로 로그인·주문한다. **시드는 300명 고정**(`seed/user.sql`) 이라 300 을 넘기면 없는 계정을 불러 `setup_token_missing` 만 늘 뿐 시드는 커지지 않는다 — 풀을 바꾸려면 `seed/user.sql` 의 `WHERE n <= 300` 도 함께 고칠 것                       |
+| `RUN_LABEL`          | `unknown`           | 산출물 파일명 접두어                               |                                                                                                                                                                                                                                                                   |
+
+## 실행
+
+**무방어 브랜치**와 **방어 브랜치**에서 같은 절차를 그대로 돌려 두 측정을 얻는다.
+두 arm 은 **앱 소스 6파일만 다르고 `qa/02-consistency/` 하네스는 바이트 동일**하다
+(`IdempotencyService` · 양 모듈 `IdempotentEventHandler` · `ProductItem` · `Customer` · `RefundConsumer`).
+
+| arm              | 체크아웃 대상                               | 비고                                            |
+| ---------------- | ------------------------------------------- | ----------------------------------------------- |
+| control (무방어) | `control/no-defense`                        | 방어 5종 OFF. 하네스는 방어 브랜치와 동일       |
+| treatment (방어) | `feature/72-consistency-seed-selfcontained` | main 병합 후에는 `main` (단, 아래 V6 주의 참조) |
+
+1. 브랜치 변경 및 이미지 빌드
 
 ```bash
-# ── control(무방어) 측정: 무방어 브랜치에서 ──
-git checkout v1                        # = control/no-defense (feature − 6방어, QA 공유)
+git checkout control/no-defense                  # 무방어(control). 방어는 위 표의 treatment 브랜치로
 cd qa/02-consistency
-./build-images.sh                      # 현재 브랜치(무방어) 소스로 이미지 빌드
-ORDER_TARGET=100000 ./run-consistency.sh C-run1     # → results/C-run1-verify.txt = 무방어 N
-
-# ── treatment(방어) 측정: 방어 브랜치에서 ──
-git checkout feature/66-consistency-integration-scenario
-cd qa/02-consistency
-./build-images.sh                      # 현재 브랜치(방어) 소스로 이미지 빌드
-ORDER_TARGET=100000 ./run-consistency.sh T-run1     # → results/T-run1-verify.txt = 방어 r
-
-# ── 비교 (KPI: N → r) ──
-diff <(sed -n '/집계 KPI/p' results/C-run1-verify.txt) <(sed -n '/집계 KPI/p' results/T-run1-verify.txt)
+docker compose -f docker-compose.qa.yml build    # 이미지 재빌드
 ```
 
-- **스모크**(하네스 동작 확인): `CHAOS=off ORDER_TARGET=2000 ARRIVAL_RATE=50 ./run-consistency.sh smoke`
-- **N회 반복**(≥10 권장): 각 브랜치에서 `./run-repeat.sh 10 C`(무방어) / `./run-repeat.sh 10 T`(방어) → `results/{C,T}-AGGREGATE.md` 중앙값 비교
+> **태그 `v1`·`v2` 로 체크아웃하지 말 것.** 둘 다 `control/no-defense` 의 조상이라 무방어 앱 코드는 맞지만
+> **하네스가 구버전**이다 — `verify-consistency.sh` 가 `총 위반 건수`·`장애별 위반(건)`·`카오스잔여`·
+> `arm(실측 거동)` 을 아예 출력하지 않아 아래 §판정 표와 맞지 않고, `aggregate-runs.sh` 가 전 항목을
+> `?` 로 읽어 `⟨측정전⟩` 만 낸다. `run-batch.sh` 도 없다. 게다가 체크아웃하는 순간 이 README 자체가
+> 구버전으로 바뀌어 다른 절차를 보게 된다.
+>
+> **`main` 도 treatment arm 이 될 수 없다** (병합 전까지) — `V6__add_order_idempotency_key.sql` 이 없어
+> `orders.idempotency_key` 컬럼이 생기지 않고, ①(`v1`)·`a_T3`·`d1` 과 VU 대조가 통째로 측정 불가가 된다.
+>
+> **arm 을 바꿀 때는 이미지를 명시적으로 지운 뒤 빌드할 것.**
+>
+> ```bash
+> docker rmi -f consist-orderapi:latest consist-userapi:latest consist-gateway:latest consist-eureka:latest
+> docker compose -f docker-compose.qa.yml build
+> ```
+>
+>
+> ```bash
+> git ls-files --eol -- gradlew          # w/crlf 면 아래로 교정
+> rm -f gradlew && git checkout -- gradlew
+> ```
 
-> ⚠ **N=1 은 점추정**이다(ADR-008 §재현 하네스 4 는 ≥10회 권장). 리포트에 **"N=1 point estimate"** 로 명시할 것.
-> ⚠ **무방어 브랜치를 방어 브랜치에 merge 하지 말 것** — 방어가 사라진다. main 으로 가져갈 건 측정 리포트(숫자)뿐.
+2. 통합 시나리오 실행전 스모크 테스트 — 빌드/세팅 정상동작 확인
+
+results/$LABEL-verify.txt 의 N 값이 판정기준에 맞음을 확인.
+
+```bash
+LABEL=C-smoke                   # 방어버전은 T-smoke
+export ORDERAPI_REPLICAS=4
+export DB_CONN_TIMEOUT_MS=1000  # T2 재현용 (기본값과 동일 — 값을 바꿔 실험할 때만 지정)
+
+# 스택 기동
+docker compose -f docker-compose.qa.yml down -v --remove-orphans
+docker compose -f docker-compose.qa.yml up -d --wait \
+    mysql-user mysql-order redis kafka eureka userapi orderapi gateway
+docker compose -f docker-compose.qa.yml up -d db-seed
+
+# ★ 앱 컨테이너가 실제로 떴는지 확인 — DB_CONN_TIMEOUT_MS 가 낮으면 JDBC 로그인 타임아웃도 함께
+#   내려가(max(1,(500+ct)/1000)초) 풀 초기화 fail-fast 로 크래시루프에 빠질 수 있다.
+#   PoolInitializationException 이 보이면 DB_CONN_TIMEOUT_MS=2000 으로 올리고 다시 기동할 것.
+docker compose -f docker-compose.qa.yml logs orderapi userapi \
+    | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
+
+# 시드 + 레지스트리 전파 대기
+docker compose -f docker-compose.qa.yml wait db-seed
+sleep 60               
+
+# 카오스 없이 작은 부하만
+RUN_LABEL=$LABEL ORDER_TARGET=2000 ARRIVAL_RATE=50 \
+    docker compose -f docker-compose.qa.yml run --rm --entrypoint sh k6
+k6 run /scripts/load-test-consistency.js
+exit
+
+# 비동기 흐름 종료 대기 → 검증
+RUN_LABEL=$LABEL bash quiescence-gate.sh        # RUN_LABEL 을 줘야 -quiescence.log 가 남는다
+RUN_LABEL=$LABEL bash verify-consistency.sh
+docker compose -f docker-compose.qa.yml down -v
+```
+
+- 판정기준 (2,000건·rate 50·무카오스 실측 기준)
+
+| 브랜치           | ① |  ② | ③ |  ④ |      ⑤ |           N | `processed_events`  |
+| ---------------- | -: | --: | -: | --: | ------: | ----------: | --------------------- |
+| 방어 (T-smoke)   |  0 |   0 |  0 |   0 |       0 | **0** | 컨슈머별 행 존재      |
+| 무방어 (C-smoke) |  0 | > 0 |  0 | > 0 | 수천 건 |        수천 | `orders[-] user[-]` |
+
+3. 시나리오 실행
+
+라벨만 바꿔가며 반복 - 무방어 `C-run1`, `C-run2` … / 방어 `T-run1` …
+
+```bash
+LABEL=C-run1  
+export ORDERAPI_REPLICAS=4      # compose deploy.replicas 로 주입
+export DB_CONN_TIMEOUT_MS=1000  # HikariCP connectionTimeout — T2(10회 재시도 후 드롭) 재현 조건
+
+# 1) 이전 잔재 정리
+docker compose -f docker-compose.qa.yml down -v --remove-orphans
+
+# 2) QA 스택 기동 (k6 제외)
+docker compose -f docker-compose.qa.yml up -d --wait \
+    mysql-user mysql-order redis kafka eureka userapi orderapi gateway
+docker compose -f docker-compose.qa.yml up -d db-seed
+
+# 3) 앱 기동 확인 → 시드 + 레지스트리 전파 대기
+#    (PoolInitializationException 이면 DB_CONN_TIMEOUT_MS=2000 으로 올리고 재기동 — 2번 항목 참조)
+docker compose -f docker-compose.qa.yml logs orderapi userapi \
+    | grep -i 'PoolInitializationException\|Exception during pool initialization\|Start completed'
+docker compose -f docker-compose.qa.yml wait db-seed
+sleep 60               
+
+# 4) 주변 장애 주입 스케줄 실행
+ARRIVAL_RATE=90 ORDER_TARGET=100000 bash chaos-schedule.sh > results/$LABEL-chaos.log 2>&1 &
+CHAOS_PID=$!    
+
+# 5) k6 셸 진입
+RUN_LABEL=$LABEL ORDER_TARGET=100000 ARRIVAL_RATE=90 \
+    docker compose -f docker-compose.qa.yml run --rm --entrypoint sh k6
+
+# 6) k6 시나리오 실행 및 종료
+k6 run /scripts/load-test-consistency.js
+exit
+
+# 7) 카오스 종료 → 비동기 흐름 종료 대기 → 검증
+#    ★ 자식(sleep·docker)까지 정리해야 한다 — 스케줄만 죽이면 주입 중이던 docker 명령이 남는다.
+kill $CHAOS_PID 2>/dev/null
+pkill -P $CHAOS_PID 2>/dev/null
+wait $CHAOS_PID 2>/dev/null
+RUN_LABEL=$LABEL bash quiescence-gate.sh                # 비동기 흐름 종료 대기 (-quiescence.log 산출)
+RUN_LABEL=$LABEL bash verify-consistency.sh             # 판정 결과 확인
+
+# 8) 정리 후 다음 run 으로
+docker compose -f docker-compose.qa.yml down -v
+```
+
+> **7) 에서 카오스가 끝까지 갔는지 반드시 확인한다.**
+>
+> ```bash
+> grep -q "카오스 스케줄 종료" results/$LABEL-chaos.log || echo "미완주 — 이 런은 폐기"
+> ```
+>
+> 주입 도중 `docker` 명령이 걸리면(T1 kill 후 재기동 hang 등) 스케줄이 그 자리에 멈추고
+> 남은 주입이 통째로 빠진다. **주입 조합이 다른 실험**이 되는데 N 은 그럴듯한 값으로 나와
+> 로그를 보지 않으면 구분되지 않는다 (실제로 C-run6 이 T4 없이 끝나 N 이 42,826 으로,
+> 카오스잔여가 0 으로 나왔다 — 정상 런은 67,000 대 / 18,000~26,000 대).
+> 폐기할 런은 `results/$LABEL-FAILED` 에 사유를 적어두면 `aggregate-runs.sh` 가 집계에서 뺀다.
+
+4. 반복 실행 자동화 (선택)
+
+위 3) 절차를 라벨만 바꿔 반복하는 드라이버. 각 단계 로그·산출물은 수동 절차와 동일하게
+남고, 카오스 미완주 시 `-FAILED` 마커를 자동으로 기록한다.
+
+```bash
+bash run-batch.sh C 1 10        # C-run1 … C-run10
+bash run-batch.sh C smoke       # C-smoke (무카오스 소부하 — 2,000건·rate 50, 위 판정기준과 동일 조건)
+bash run-batch.sh C 6 10        # 번호 구간 재측정 (폐기된 런을 다시 돌릴 때 그 번호로 지정)
+```
+
+> 본 런의 도착률은 `ARRIVAL_RATE`(기본 `90`) 로 k6·chaos 양쪽에 같은 값이 자동 주입된다.
+> 스모크는 판정기준과 맞추려고 `SMOKE_RATE`(기본 `50`) 를 따로 쓴다.
+
+5. 반복된 결과 집계
+
+```bash
+./aggregate-runs.sh C           # 무방어 브랜치 (control/no-defense 에서)
+./aggregate-runs.sh T           # 방어 브랜치 (treatment 브랜치에서)
+```
+
+> 집계는 `results/` 의 파일만 읽으므로 어느 브랜치에서 돌려도 수치는 같지만, 리포트 머리말의
+> `branch=` 는 **집계를 실행한 시점의 HEAD** 를 찍는다. 산출물의 출처로 읽히지 않게 해당 arm 의
+> 브랜치에서 돌릴 것.
 
 ## 통합 시나리오 구성 (기본 10만 건)
 
-| 주문 유형 | 비율 | 발화 벡터 | 발화하는 원하는 장애 |
-|---|---:|---|---|
-| 일반 정상 | 85% | ctrich(잔액 충분) × 정상 SKU(재고 충분) | 해피패스 + ①⑥ + 아웃박스 |
-| 한정 재고 경합 | 8% | ctrich × hot SKU(count 1000 ≪ 8k 수요) | ② 재고 락 경합/초과판매 · ③ 소진→환불 |
-| 잔액 부족 | 5% | ctbroke(잔액 500) × 정상 SKU | ④ 결제 실패 분기 |
-| 멱등 재전송 overlay | 2% | 정상 주문 + 같은 Idempotency-Key 재전송 | ① 중복 결제 |
+| 주문 유형        | 비율 | 주입 조건              | 원하는 장애                                     |
+| ---------------- | ---: | ---------------------- | ----------------------------------------------- |
+| 일반 정상        |  90% | 잔액 충분 × 재고 충분 | - 중복 주문/결제<br />- 이벤트 중복/역순 배달 |
+| 한정 재고 경합   |   8% | 잔액 충분 × 재고 부족 | - 재고 초과판매<br />- 재고 소진→환불         |
+| 동일 주문 재전송 |   2% | 주문 재전송            | - 중복 주문/결제                                |
 
-**주입 조건**: orderApi 4인스턴스 × Kafka 4파티션(`KAFKA_CFG_NUM_PARTITIONS: 4`)로 같은 hot SKU/고객을 병렬
-처리 → ②⑤⑥ 경합 발화. 작은 고객 풀(360명 ≪ 10만)로 "같은 고객 경합" → ⑤ 잔액 Lost Update 발화.
+**추가 주입 조건**
 
-> ★ **시드 정합 규칙**: hot/normal SKU 의 이름·설명·가격은 k6 payload 와 정확히 일치해야 한다
-> (`CartService.refreshCart` 가 DB 와 비교 → 다르면 `CART_CHECK_REQUIRED` 로 SAGA 진입 자체가 막힘). 전부 ASCII.
-> ★ **잔액 시드 규칙**: 결제 가능액은 `customer.balance` 가 아니라 최신 `customer_balance_history.change_money`
-> 로 판정된다 — 고객마다 기준 이력 행이 반드시 있어야 한다(없으면 시작 잔액 0 → 전건 결제 실패, ADR-005 시드 버그).
+- orderApi 4인스턴스 × Kafka 4파티션으로 같은 주문을 병렬처리 → 2,4,5번 장애 발화.
+- 같은 고객의 동시 다중 주문 경합 → 4번 장애 발화.
 
-## 정착 → 판정
+> **시드 정합 규칙**: 시드 재품의 이름·설명·가격은 k6 payload 와 정확히 일치해야 한다
+> **잔액 시드 규칙**: 결제 가능액은 최신 `customer_balance_history`로 판정된다 — 고객마다 기준 이력 행이 반드시 있어야 한다.
 
-1. **부하 종료** — k6 가 요청을 멈춘다 (constant-arrival-rate, 고정 RPS).
-2. **정착(quiescence) 게이트** — 고정 sleep 아님: 양 DB `outbox 미발행=0` ∧ `PENDING/PAID=0` ∧ `consumer lag=0`
-   이 K회 연속일 때까지 폴링 ([quiescence-gate.sh](quiescence-gate.sh)).
-3. **교차 DB 3대 불변식 / 9개 체크** ([verify-consistency.sh](verify-consistency.sh)) — 런 스코프는 시드 명명(`ctrich%`/`ctbroke%`, hot id 10001):
+### 판정
 
-| 불변식 | 체크 | 판정 |
-|---|---|---|
-| ① 멱등성 | duplicate_order_responses (k6) | = 0 |
-| ② 초과판매 | 음수 재고 · 차감량==CONFIRMED 수량 · CONFIRMED≤초기재고 | = 0 |
-| ③ 결제·재고 정합성(돈 보존) | PENDING/PAID 잔여 · outbox 미발행(양 DB) · 돈 보존(Σ잔액감소==ΣCONFIRMED) · 음수 잔액 | = 0 |
+**총 위반 건수와 성분별 위반 건수를 함께 보인다** — `N → r` 이 헤드라인, 장애별 `A → a` 가 그 분해다.
 
-> ⚠ **T4 거짓 PASS**: "outbox 미발행=0"은 `sent_at IS NULL` 만 세므로 kafka 로그 전소(T4) 시 이미 sent 표기라
-> 손실을 놓친다 → T4 는 **돈 보존·PENDING/PAID 잔여**로만 잡히는 은닉 손실이다.
-
-## control(무방어) = 무방어 전용 브랜치 (arm)
-
-**운영 코드(feature = treatment)에는 방어를 끄는 스위치가 일절 없다** — prod 에서 실수로 방어가 꺼지는
-footgun 을 원천 차단한다. 무방어 소스는 **별도 git 브랜치 `control/no-defense`(tag `v1`) = feature − 6개 방어**
-에만 존재하며, 그 브랜치를 체크아웃해 같은 QA 를 돌리면 control 측정이 된다(별도 control 이미지·오버레이·토글 없음).
-
-| 방어 | 제거 (control/no-defense 브랜치, 최소 diff) |
-|---|---|
-| ① 멱등 게이트 | `IdempotencyService.execute()` 가 게이트 없이 매 요청 실행 |
-| ② 재고 낙관적 락 | `ProductItem` 의 `@Version` 삭제 |
-| ③ 환불 보상 | `RefundConsumer` 가 이벤트만 소비, 환불 안 함 |
-| ④ 잔액 검증 | `CustomerBalanceHistoryService` 의 `NOT_ENOUGH_BALANCE` 검사 삭제 |
-| ⑤ 잔액 낙관적 락 | `Customer` 의 `@Version` 삭제 |
-| ⑥ dedup | `IdempotentEventHandler`(양 모듈)의 `processed_events` 검사 삭제 |
-
-**왜 브랜치인가** — env 토글은 무방어 분기가 운영 이미지에 실려 footgun; 소스 오버레이는 원본이 바뀌면 조용히
-어긋남(drift). 브랜치는 **footgun 0(운영 pristine)** + **drift 관리**(아래) + **@Version 자연 처리**(그냥 삭제)를 다 만족한다.
-
-**드리프트 관리**: 한 번 측정이면 `control/no-defense` 를 feature 최신에서 뽑았으니 drift 0. 반복/재측정 시엔
-`git switch control/no-defense && git merge feature` 로 상류 변경을 반영한다 — **충돌 지점이 곧 방어 제거 지점**이라,
-오버레이의 "조용한 drift"와 달리 어긋남이 눈에 보인다.
-
-### control/no-defense 브랜치 (재)생성 / 갱신
-
-```bash
-git switch -c control/no-defense feature/66-consistency-integration-scenario   # 최초 1회
-# 6개 방어 최소 diff 제거: @Version(ProductItem·Customer) 삭제 + 멱등 게이트/dedup/환불/잔액검증 제거
-git commit -am "chore(control): 무방어 빌드 — 6종 방어 제거"
-git tag -a v1 -m "ADR-008 control 무방어 스냅샷"
-git switch feature/66-consistency-integration-scenario
-# 이후 상류 변경 반영: git switch control/no-defense && git merge feature (충돌=방어지점) && git tag -f v1 && git switch -
+```
+N = ① + ② + ③ + ④ + ⑤ + 카오스잔여        (전부 '건' 단위)
 ```
 
-## 알려진 제약 / 정직성
+| 성분                       | 무엇을 세는가                                                                  | 기대 신호                 | 출력 키         |
+| -------------------------- | ------------------------------------------------------------------------------ | ------------------------- | --------------- |
+| ① 중복 주문/결제          | 같은 멱등키로 생성된**주문의 초과분**                                    | 무방어 > 0 / 방어 0       | `v1`          |
+| ② 재고 초과판매           | 한정 재고 상품의**이중 차감량** = max(v2b, v2c)                          | 무방어 > 0 / 방어 0       | `v2b`/`v2c` |
+| ③ 재고소진 → 환불        | **갚아야 할 주문 수 − 실제로 갚은 주문 수** (= 미보상)                  | 무방어 > 0 / 방어 0       | `미보상`      |
+| ④ 잔액 Lost Update        | 잔액 원장의**앞뒤 행 금액이 이어지지 않는 행수**                         | 무방어 > 0 / 방어 0       | `d4b`         |
+| ⑤ 이벤트 중복/역순        | 한 주문에**결제 완료 이벤트가 2건 이상 발행된 초과분**                   | 무방어 > 0 / 방어 0       | `d5b`         |
+| **카오스잔여 T1~T4** | `max(0, v3a − ③미보상) + a_T1` — 주변 장애가 남긴 미착지 주문과 공짜 주문 | **양 arm 모두 > 0** | `카오스잔여`  |
 
-- 수치는 전부 `⟨측정전⟩` — 하네스·무방어 브랜치는 구현했으나 ≥10회 100k 측정은 아직 미실행.
-- 집계 KPI 는 **개별 귀속 불가**(§한계). 단일 헤드라인 %로 세탁하지 않는다.
-- 근본 수정(DLQ/정산 큐, 아웃박스 poison-row 격리 등)은 본 시나리오 범위 밖 — ADR-008 §후속 과제.
+- 계수 기준은 **위반된 불변식**이다 — 한 원인이 두 불변식을 깨면 각각 센다 (예: ⑤ 의 동시 재처리가 재고를 이중 차감하면 ⑤ 1건 + ② 1건. 서로 다른 피해다).
+- **카오스잔여에서 ③미보상을 빼는 이유는 이중 계상 방지다.** 재고 부족으로 실패한 주문은 롤백되어 미착지(PENDING) 상태로 남으므로 **③미보상 ⊆ `v3a`** 다. 실측(C-run1)에서 `v3a` 27,478 ⊇ hop1유실 22,333 + ③미보상 1,088 이 확인됐다. 같은 이유로 **hop1 유실도 따로 더하지 않는다** — 주문 생성 이벤트가 유실되면 결제가 일어나지 않아 역시 `v3a` 의 부분집합이다.
+- `a_T1`(확정된 주문인데 환불됨)은 대상이 CONFIRMED 라 `v3a`(PENDING/PAID)와 **서로소**이므로 그대로 더한다.
+- 돈 축은 별도로 **돈 누수** = (초기 잔액합 − 현재 잔액합) − Σ 확정 주문 결제액 → **받은 돈 중 물건으로 갚지 않은 액수** (`v3d`, 원 단위).
+- **⑤ 는 원인을 가리지 않는다.** 중복 처리의 원인이 Kafka at-least-once 인지 T1/T2/T4 가 유발한 재배달인지 구분하지 않으므로, ⑤ 에는 카오스 유발분이 섞여 있다. 방어 arm 에서 0 이 되는 것은 dedup 이 원인과 무관하게 전부 흡수하기 때문이다.
+
+### 지표 해석 시 주의사항
+
+- **아웃박스 체인 보존식(`o_L1`)은 행 수 차분이라 두 성분이 상쇄된다.** 유실(양수)과 중복(음수)이 한 숫자 안에서 서로 지워, `|o_L1|` 은 중복의 하한에 그치고 유실은 통째로 보이지 않는다. **주문 단위로 보면 상쇄가 없으므로 각각 따로 읽는다.**
+
+  | 성분 | 무엇을 세는가                                                 | 출력 키       |
+  | ---- | ------------------------------------------------------------- | ------------- |
+  | 중복 | 같은 주문에 결제 완료 이벤트가 2건 이상인 초과분              | `d5b`       |
+  | 유실 | 주문 생성 이벤트는 있는데 하류(결제 완료/실패)가 없는 주문 수 | `hop1 유실` |
+- **③ 은 세 값을 구분해야 한다.** 단위가 달라 아무거나 빼면 안 된다.
+
+  | 값                         | 뜻                                       | 단위    |
+  | -------------------------- | ---------------------------------------- | ------- |
+  | 갚아야 할 주문 (`d3p`)   | 재고 부족으로 실패해 환불 대상이 된 주문 | 주문 수 |
+  | 실제로 갚은 주문 (`d3r`) | 환불이 실행된 주문                       | 주문 수 |
+  | 갚은 횟수 (`d3`)         | 환불이 실행된**횟수**              | 행 수   |
+
+
+  - **미보상 = 갚아야 할 주문 − 실제로 갚은 주문**
+  - **중복환불 = 갚은 횟수 − 실제로 갚은 주문** ← 같은 주문에 두 번 이상 갚은 횟수.
+  - **부당환불 = 중복환불 + 공짜주문** ← 갚으면 안 되는데 갚은 **총** 건수.
+- **돈 누수는 순액이라 성분이 뭉개진다.** 미보상·이중 결제 미환불은 (+), 부당환불은 (−) 로 **한 숫자 안에서 상쇄**된다. 방어 arm 의 돈 누수가 작다고 해서 미보상이 그만큼 작다는 뜻이 아니다 — 성분별 크기는 반드시 **건수**로 읽어야 한다.
+
+### 판정결과에서 기호의 의미
+
+**불변식 잔여 체크 (진단용 — `v1`·`v2b`/`v2c`·`v3a` 가 `N` 의 성분으로 쓰인다)**
+
+| 기호    | 무엇을 세는가                                                            | 단위    |
+| ------- | ------------------------------------------------------------------------ | ------- |
+| `v1`  | 같은 멱등키로 만들어진 주문의 초과분 (=`N` 의 ① 성분)                 | 주문 수 |
+| `v2a` | 재고가 음수가 된 상품 행                                                 | 행 수   |
+| `v2b` | \|실제 차감량 − 확정 주문의 주문 수량\|                                 | 개수    |
+| `v2c` | 확정된 수량이 초기재고를 넘은 양 (=`N` 의 ② 성분)                     | 개수    |
+| `v3a` | 미착지 주문(PENDING/PAID) 잔여 — ③ 미보상 + 주변 장애(T2/T4) 몫 포함   | 주문 수 |
+| `v3b` | 미발행 아웃박스 행 — 주문 DB                                            | 행 수   |
+| `v3c` | 미발행 아웃박스 행 — 사용자 DB                                          | 행 수   |
+| `v3d` | **돈 누수** = (초기 잔액합 − 현재 잔액합) − Σ 확정 주문 결제액  | 원      |
+| `v3e` | 잔액이 음수인 고객 행                                                    | 행 수   |
+| `N`   | **총 위반 건수** = ① + ② + ③ + ④ + ⑤ + 카오스잔여 — 집계 KPI | 건      |
+
+**아웃박스 체인 — 이벤트가 각 단계에서 몇 개 발행됐나**
+
+| 기호          | 뜻                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------ |
+| `s_oc`      | 주문 생성 이벤트 발행 수                                                             |
+| `s_pd`      | 결제 완료 이벤트 발행 수                                                             |
+| `s_pf`      | 결제 실패 이벤트 발행 수                                                             |
+| `s_srf`     | 재고 실패(환불 요청) 이벤트 발행 수                                                  |
+| `s_pr`      | 환불 완료 이벤트 발행 수                                                             |
+| `o_L1`      | `s_oc − s_pd − s_pf` — 1단계 보존식. **행 수 차분이라 유실·중복이 상쇄** |
+| `o_L2`      | `s_pd − 확정 − s_srf` — 2단계 보존식. 상쇄 문제 동일                            |
+| `o_L3`      | `s_srf − s_pr` — 3단계 보존식. **무방어 arm 은 환불을 안 해 비교 불가**    |
+| `hop1 유실` | 주문 생성은 있는데 하류가 없는 주문 수 —`o_L1` 의 유실 성분만 분리                |
+
+**의도된 장애 ①~⑤**
+
+| 기호     | 무엇을 세는가                                           | 비고                                              |
+| -------- | ------------------------------------------------------- | ------------------------------------------------- |
+| `d1`   | ① 중복 주문/결제 (=`v1` 재사용)                      |                                                   |
+| `d2`   | 낙관적 락 충돌로 환불된 건수                            | 무방어 arm 은 환불이 없어 항상 0                  |
+| `d3`   | 재고 부족으로 환불이 실행된**횟수**               | **행 수** — `d3p`/`d3r` 과 단위가 다름 |
+| `d3p`  | ③**갚아야 할 주문** — 재고 부족으로 실패한 주문 | 양 arm 비교 가능                                  |
+| `d3r`  | ③**실제로 갚은 주문**                            | 양 arm 비교 가능                                  |
+| 미보상   | `d3p − d3r` — 갚아야 하는데 안 갚음                 | ③ 의 위반 건수                                   |
+| 중복환불 | `d3 − d3r` — 같은 주문에 두 번 이상 갚음            | 방어 arm 전용                                     |
+| 부당환불 | 중복환불 + 공짜주문 — 갚으면 안 되는데 갚은 총 건수    | 방어 arm 전용.**KPI 에 합산 금지**          |
+| `d4`   | `@Version` 매핑이 살아 있는지 확인용                  | **위반 탐지력 없음** — 참고값              |
+| `d4b`  | ④ 잔액 원장의 앞뒤 행 금액이 이어지지 않는 행수        | ④ 의 실제 신호                                   |
+| `d5`   | 처리 이력 테이블의 총 행수 (컨슈머별)                   | 참고값 — 중복 횟수가 아님                        |
+| `d5b`  | ⑤ 한 주문에 결제 완료 이벤트가 2건 이상인 초과분       | ⑤ 의 정확한 중복 처리 건수                       |
+
+**주변 장애 귀속 (참고 — 근사이며 KPI 아님)**
+
+| 기호         | 무엇을 세는가                                      | 한계                                             |
+| ------------ | -------------------------------------------------- | ------------------------------------------------ |
+| `a_T1`     | 확정된 주문인데 환불받은 주문 =**공짜 주문** | T1 고유 지문 아님 — T2·재배달도 같은 상태 생성 |
+| `a_t1_sig` | 주문 상태 전이가 거부된 흔적                       | ⑤ 재배달과 공유                                 |
+| `a_T3`     | 멱등키 유실로 늘어난 주문 (=`v1` 재사용)         | 무방어 arm 은 멱등키 자체가 없어 발화 불가       |
+| `a_T2T4`   | 발행됐으나 처리 이력이 없는 이벤트                 | **무방어 arm 에서 측정 불가**(n/a 로 강등) |

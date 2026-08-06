@@ -1,0 +1,149 @@
+===== 정합성 검증 (C-run6) =====
+arm(실측 거동): control(무방어 — processed_events 0 행)
+   ※ 라벨이 아니라 실행된 컨테이너의 거동으로 판정한다. 라벨 접두(C-/T-)와 어긋나면
+      이미지·소스 불일치이므로 그 런은 폐기할 것 (arm 전환 시 이미지 재빌드 누락이 주 원인).
+scope: ctrich | rich=300 | hot id=10001 init=1000 now=0 version=0
+status 분포: CONFIRMED58209PENDING791
+
+① 중복 주문 (같은 멱등키로 2건 이상)          :        13 건  (중복 키 13 개, 생성 59000)
+   └ 참고: 생성 − 의도 차분(하한)              :         0 건  (의도 59620)
+② 초과판매
+   v2a 음수 재고 행                            :         0 행
+   v2b |차감량 − CONFIRMED수량|                :        86 개  (차감량 1000 = init 1000 − now 0, CONFIRMED 1086)
+   v2c CONFIRMED수량 − 초기재고 초과분         :        86 개
+③ 결제·재고 정합성 (돈 보존)
+   v3a PENDING/PAID 잔여                       :       791 행
+   v3b outbox 미발행(orders)                   :         0 행  ※ T4 는 여기서 0 으로 보인다(은닉 손실은 v3d/v3a 로)
+   v3c outbox 미발행(user)                     :         0 행  ※ 동일
+   v3d 돈 보존 누수                            : 122285000 원  ((초기잔액합 3000000000 − 현재 2705195000) − CONFIRMED결제 172520000)
+   v3e 음수 잔액 행                            :         0 행
+
+장애별 위반(건): ①=       13 ②=       86 ③=      791 ④=      331 ⑤=    41605
+카오스잔여(T1-T4):         0  (v3a 791 − ③미보상 791 + a_T1 0)
+
+[VU 대조 — 동시성 장애가 어느 부하 수준에서 났나]  버킷: lt10 / 10-49 / 50-99 / 100-299 / 300+
+   전체 주문(기준선)     : 01_lt10=51670|02_10-49=3207|03_50-99=823|04_100-299=1603|05_300+=1697
+   hot SKU 주문(② 경합) : 01_lt10=1551|02_10-49=191|03_50-99=38|04_100-299=97
+   ① 중복 주문           : 01_lt10=16|02_10-49=2|03_50-99=4|04_100-299=4
+   ④ lost update 주문    : 01_lt10=287|02_10-49=18|04_100-299=12|03_50-99=2|05_300+=8   (위반 331행 중 orderId 추출분, 1000개씩 분할)
+   ※ k6 가 멱등키에 요청 시점 활성 VU 를 인코딩한다(<uuid>-vu<N> → orders.idempotency_key).
+      기준선과 비교해서 읽을 것 — 위반이 고VU 버킷에 치우쳤는지가 신호다.
+   ※ ★ VU 는 원인이 아니라 결과일 수 있다. 요청이 느려지면 k6 가 도착률 유지를 위해 VU 를 늘리므로,
+      카오스 구간에서 VU 급등과 위반이 함께 나타나는 것은 공통 원인에 의한 상관이다(실측 C-run1:
+      평시 VU 4~10, T1 구간 평균 227.8, T4 직후 305.5, 최대 800=maxVUs 상한).
+      ④ 의 실제 동시성 결정 요인은 VU 수가 아니라 같은 고객 행을 동시에 친 트랜잭션 수다.
+   ※ ② 는 집계로 탐지돼(차감량 vs 확정수량) 위반 주문을 개별 식별할 수 없다 — hot SKU 주문 전체의
+      VU 분포를 대리 지표로 쓴다. ④ 는 원장 위반 행의 orderId 로 주문에 조인해 개별 귀속된다.
+   ※ '-' 이면 멱등키에 VU 가 없는 것(VU 인코딩 이전 런) — 0 으로 읽지 말 것.
+총 위반 건수(의도①-⑤ + 카오스잔여) N = 42826
+돈 보존 누수(원) = 122285000  (부호: +면 소실/은닉, −면 무에서 창조)
+   ※ 계수 기준은 '위반된 불변식' — 한 원인이 두 불변식을 깨면 각각 센다(⑤ 동시 재처리 → ⑤ 1 + ② 1).
+      ② = max(v2b,v2c) 다 — v2c 단독은 재고 미소진 구간의 이중 차감을 놓친다(v2c 는 재고가
+      바닥나야 양수). k6 hot 주문이 전량 1개씩(count:1)이라 수량 = 주문 건과 동치.
+      카오스잔여는 v3a 에서 ③미보상을 뺀 값 + a_T1 이다 — ③미보상 ⊆ v3a 라 빼지 않으면 이중 계상.
+      hop1 유실도 v3a 의 부분집합이라 따로 더하지 않는다. a_T1 은 CONFIRMED 대상이라 v3a 와 서로소.
+   ※ 구산식 N(= v1+v2a+max(v2b,v2c)+v3a+v3b+v3c+v3e, 단위 혼합)은 삭제됨 —
+      기존 20런 리포트의 N 은 구산식 값이므로 이 N 과 직접 비교 금지.
+
+※ 값만 보고한다 — 합·불 판정 없음. 0 = 잔여 없음.
+   arm 비교는 aggregate-runs.sh 의 중앙값·범위로: 총 위반 N(control) → r(treatment), 장애별 ①-⑤ + 카오스잔여도 각각 대비.
+   treatment 의 잔여 r>0 은 5개 방어 대상이 아닌 주변 장애 T1–T4 몫. control 은 desired 위반까지 더해 N≫r.
+
+----- 장애별 계수·폴트 귀속 — d3p/d4b/d5b/미보상은 위 N 의 성분, a_*·o_L* 는 근사 귀속 참고값 -----
+[주변 장애 T1–T4]
+   a_T1  CONFIRMED 인데 환불된 주문         :         0 건  
+         └ T1 지문(reason=허용되지 않은 주문 상태 전이입니다.) :         0 행
+         └ 환불 총건수 0 / FAILED(환불완료 표식) 0 / 차분 0
+         ※ T1 고유 지문이 아니다 — 실체는 '재고예약(REQUIRES_NEW) 커밋 ↔ 마커 커밋 창 파열 후 재배달'.
+            SIGKILL(T1) 이 주 원인이지만 T2(바깥 tx 커밋 실패)·리밸런스 재배달도 같은 상태를 만든다.
+            확정 귀속은 FAULTS 절제 실험(FAULTS=T1 단독 vs FAULTS=T2 단독)으로만 가능하다.
+         ※ control(v1) 은 RefundConsumer 본문이 비어 환불 이력 자체가 없다 → a_T1·T1 지문·환불 총건수·
+            FAILED 표식이 전부 구조적 0 이다. 'control 에 무에서 돈 창조가 없었다'는 뜻이 아니며,
+            control 의 T1 손실은 환불 미실행에 의한 소실로 v3d 양수 쪽에만 나타난다.
+   a_T3  같은 멱등키 초과 생성(= v1 재사용) :        13 건  (주 경로는 T3=FLUSHALL)
+         ※ 유일 경로는 아니다 — IN_PROGRESS TTL 2분 만료 + SETNX↔cache 비원자 창으로도 발생 가능.
+            control(v1) 은 진입 멱등 게이트 자체가 없어 이 값은 T3 가 아니라 의도된 장애 ① 그 자체다.
+   a_T2T4 발행 후 미처리 이벤트             :       n/a 건  (processed_events 전무(control/v1 = 양 모듈 dedup 미기록) → 발행 총량 271767 이 그대로 잡힘 — 측정불가)
+         └ order-created→userapi-payment                  59000 (sent 59000 / proc 0)
+         └ stock-reservation-failed→userapi-refund       112162 (sent 112162 / proc 0)
+         └ payment-deducted→orderapi-stock               100605 (sent 100605 / proc 0)
+         └ payment-failed→orderapi-payment-failed             0 (sent 0 / proc 0)
+         └ payment-reverted→orderapi-payment-reverted         0 (sent 0 / proc 0)
+         └ payment-reverted 에서 a_T1 추정분 제외한 잔여      :         0
+         └ PENDING/PAID 생성시각 분포(분): 07:12=38|07:13=311|07:14=267|07:15=175
+         ※ 정의는 '미배달'이 아니라 '발행됐는데 마커 없음' = 미배달(T2/T4) + 처리실패 합계다.
+            payment-reverted / payment-failed 는 대상 주문이 CONFIRMED 면 Order.markFailed 가 예외를 던져
+            트랜잭션이 롤백돼 마커가 영영 안 남는다(재시도해도 동일) → g_pr·g_pf 에 a_T1 과 같은 사건이
+            이중 계상된다. 위 'a_T1 추정분 제외' 잔여를 T2/T4 근사치로 보고, FAULTS=T2,T4(T1 제외)
+            절제 런에서 g_pr 이 0 으로 떨어지는지로 검증하라.
+         ※ T2(mysql-order 다운→재시도 소진 드롭)와 T4(kafka 로그 전소)는 DB 지문이 같아 이 수치만으론 분리 불가.
+            위 분포의 클러스터 위치를 results/C-run6-chaos.log 의 주입 시각과 대조하라 —
+            T2 는 부하 진행도 20%, T4 는 80% 지점에 주입되므로 클러스터 위치로 구분한다.
+            확정 귀속이 필요하면 FAULTS 로 절제 실험을 돌릴 것 (예: FAULTS=T2,T3,T1 → T4 제외, FAULTS=T4 → 단독).
+         ※ control(v1) 은 orderApi·userApi **양쪽 다** processed_events 를 기록하지 않는다(doHandle 이 accept 만).
+            → 위 5개 토픽 전부가 '전량 미처리'로 부풀어 a_T2T4 = 발행 총량이 된다. arm 비교 신호가 아니며,
+            이 스크립트는 p_* 합계가 0 이면 a_T2T4 를 n/a 로 강등한다(토픽별 sent/proc 는 원시값 그대로 남긴다).
+         ※ 전역·누적 계수다 — control 런이 남긴 '마커 0' outbox 행이 같은 named volume 을 쓰는 이후
+            treatment 런까지 영구 오염시킨다. arm 을 바꿀 때는 반드시 down -v 로 볼륨을 비울 것.
+   [outbox 체인 보존식 — processed_events 비의존, ★ 양 arm 비교 가능]
+         o_L1 order-created 미착지    :    -41605   (s_oc 59000 − s_pd 100605 − s_pf 0)
+         o_L2 payment-deducted 미착지 :    -69766   (s_pd 100605 − CONFIRMED 58209 − s_srf 112162)
+         o_L3 stock-resv-failed 미착지:    112162   (s_srf 112162 − s_pr 0)  ※ arm 중립 아님
+         ※ 부호가 의미다 — 양수 = 하류가 못 받음(T2 드롭 / T4 로그 전소), 음수 = 같은 이벤트 이중 처리(⑤).
+            a_T2T4 가 control 에서 n/a 인 이유(계측기 processed_events 가 곧 ⑤ 방어)를 우회한다.
+            v1 은 outbox_events 를 건드리지 않으므로 이 세 값은 양 arm 에서 같은 의미를 갖는다.
+         ※ ⑤ 의 하한: control 은 dedup 이 없어 재배달이 곧 재실행이고 그때마다 후속 이벤트를 한 번 더
+            발행한다 → o_L1 이 음수면 그 절대값이 '중복 처리된 OrderCreated 수' 하한이다(d5 보완).
+         ※ 정착 이후 값이라야 유효하다 — 부하 중이면 in-flight 가 그대로 양수로 잡힌다.
+         ※ o_L3 는 control 에서 RefundConsumer 본문이 비어 s_pr=0 → o_L3 = s_srf 가 된다.
+            control 에서는 '환불 미실행 건수'로 읽고 유실 지표로 읽지 말 것.
+[의도된 장애 ①–⑤]
+   d1    중복 주문/결제 (= v1 재사용)       :        13 건
+   d2    낙관적 락 충돌 환불                :         0 건  (reason=재고 동시성 충돌)
+   d3    재고 부족 환불                     :         0 건  (reason=상품 아이템의 수량이 부족합니다.)
+         ※ d2/d3 구분 정보는 orders.failure_reason 에 남지 않는다(상수로 덮임) — 잔액이력 description 전용.
+            control(v1) 은 RefundConsumer 본문이 비어 환불 이력 자체가 없어 d2/d3 = 0 이다.
+   d3p ★ ③ 갚아야 할 주문 (arm 중립)       :       791 주문  (SRF reason=수량 부족, DISTINCT orderId)
+   d3r   ③ 실제로 갚은 주문                 :         0 주문  (환불 이력의 orderId, DISTINCT)
+         ├ 미보상 = d3p − d3r              :       791 주문   ← 갚아야 하는데 안 갚음
+         ├ 중복환불 = d3 − d3r             :         0 회     ← 같은 주문에 두 번 이상 갚음
+         ├ 부당환불 = 중복환불 + 공짜주문   : 0 건    ← 갚으면 안 되는데 갚은 총 건수
+         └ SRF 사유 분포(주문 수): 허용되지않은주문상태전이입니다.=50805|상품아이템의수량이부족합니다.=791
+         ※ d3(행 수)와 d3p(주문 수)는 단위가 달라 직접 빼면 안 된다. 대조는 d3r 로 한다.
+         ※ SRF 를 발행하는 StockConsumer 는 arm diff 6파일 밖이라 양 arm 동일 코드 →
+            control 도 SRF 는 정상 발행한다(소비만 안 함). 그래서 control 에서도 ③ 가 관측된다.
+            control   : d3r=0 이므로 미보상 = d3p 전량 = ③ 의 위반 건수.
+            treatment : 미보상 0 이 기대. 과보상 > 0 이면 그만큼 a_T1(공짜 주문)으로 착지한다
+                        — dedup 이 eventId 기준이라 같은 주문에 SRF 가 여러 번 발행되면 각각 환불된다.
+         ※ reason 필터가 필수다. SRF 사유는 다섯 갈래이고 '허용되지 않은 주문 상태 전이입니다.' 는
+            이미 CONFIRMED 인 주문에 재도착한 '헛 요청'이라 환불 대상이 아니다(섞으면 위반이 부풀어 오름).
+         ※ DISTINCT 가 필수다. 재처리마다 SRF 가 새로 발행되는데 control 이 재처리가 많아
+            행 단위로 세면 arm 비교가 불공정해진다.
+         ※ 위 사유 분포가 '-' 이면 JSON 경로/charset 이 깨진 것이다 — d3p=0 을 '위반 없음'으로 읽지 말 것.
+   d4    @Version 존재 확인용(참고)         :       300 명  (기대식: version = history행수 − 1, 시드 1행 제외)
+         └ 표본 (version, 행수): (v=0,h=336),(v=0,h=287),(v=0,h=364),(v=0,h=323),(v=0,h=327)
+         ※ ★ Lost Update 탐지력이 없다 — 라벨을 '④ 의심'으로 읽지 말 것.
+            treatment: history 행 추가와 version 증가가 같은 트랜잭션이라 기대식이 항등식 → 구조적으로 0.
+            control(v1): @Version 필드가 없어 version 0 고정 → '결제가 1회라도 성공한 고객 수'를 센다
+            (활동 없는 고객은 행수=1 이라 일치하므로 '전 고객'은 아니다). 양쪽 다 위반량과 무관하다.
+   d4b   ④ 잔액 Lost Update (원장 체인 끊김) :       331 행  (current_money ≠ 직전 행 change_money)
+         └ 원장 최신합 2705195000 vs customer.balance 합 2705195000 / 차 0
+         ※ 이쪽이 ④ 의 실제 신호다. 같은 '최신행'을 두 트랜잭션이 동시에 읽고 각각 커밋하면 링크가 끊긴다.
+            control > 0 / treatment = 0 이 기대. 차(ledger_gap)≠0 은 파생 캐시(customer.balance)만 덮인 경우다.
+   d5    processed_events 총 행수           : orders[-] user[-]
+         ※ 위 행수는 '처리된 고유 이벤트 수'일 뿐 중복 횟수가 아니다. 중복 처리 계수는 아래 d5b 로 한다.
+   d5b ★ ⑤ 이벤트 중복 처리 (arm 중립)      :     41605 건  (중복이 난 주문 34543 개)
+       ★ hop1 유실 (중복과 분리)             :         0 주문  (order-created 59000 − 하류 pd∪pf 59000, DISTINCT orderId)
+         ※ 이 둘이 o_L1(   -41605)의 두 성분이다. o_L1 은 행 수 차분이라 유실(양수)과 중복(음수)이
+            한 숫자에서 상쇄돼 |o_L1| 이 중복의 하한에 그치고 유실은 통째로 보이지 않는다.
+            주문 단위로 보면 상쇄가 없다 — 중복은 d5b, 유실은 위 값으로 각각 읽는다.
+         ※ 유실 계산에 교차 DB 조인이 필요 없는 이유: PaymentConsumer 는 OrderCreated 를 처리해야만
+            pd/pf 를 발행하므로 {pd,pf 의 orderId} ⊆ {oc 의 orderId} 다. 부분집합이면 차집합 크기 =
+            원소 수의 차이므로 양 DB 에서 DISTINCT 개수만 각각 뽑아 빼면 된다.
+            → 음수가 나오면 이 가정이 깨진 것(하류가 상류보다 많음) = 데이터 이상 신호다.
+         ※ '중복 처리' 계수이지 '중복 배달' 계수가 아니다. outbox_events 는 발행을 기록하지 배달을
+            기록하지 않는다. treatment 의 0 은 '배달이 없었다'가 아니라 '처리가 없었다'는 뜻이다 —
+            배달은 양 arm 에 동일하게 일어나고 dedup 이 처리 단계에서 막는다.
+         ※ ⑤ 의 역순 축은 별도 계수기를 두지 않는다. 순서 역전은 어느 주문이 한정 재고를 획득하느냐
+            (분배)를 바꿀 뿐 위반 총량을 바꾸지 않고, 이를 거부하는 Order 상태 전이 가드는 양 arm 동일하다.
+         ※ outbox_events/processed_events 는 런 스코프 컬럼이 없어 전역 계수이며 down -v 전까지 런 간 누적된다.

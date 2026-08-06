@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# =============================================================================
+# ADR-008 — 한 arm(= 한 브랜치)의 run 결과 집계 (점추정 금지)
+#
+#   aggregate-runs.sh <label_prefix>      예: ./aggregate-runs.sh T
+#
+# 수동 측정 절차(README §실행)로 쌓인 results/<PREFIX>-run<i>-verify.txt 를 모아
+# 위반 총수 N·돈 누수의 원값·중앙값·범위를 results/<PREFIX>-AGGREGATE.md 로 공표한다.
+# 실행 자체는 하지 않는다 — 이미 끝난 run 들을 읽어 표로 만들 뿐.
+#
+# 브랜치 = arm 이라 control 과 treatment 는 각 브랜치에서 따로 돌리고 따로 집계한다:
+#   control/no-defense              에서 C-run1..N → ./aggregate-runs.sh C   (무방어 N 분포)
+#   방어 브랜치(V6 멱등키 마이그레이션이 있는 쪽) 에서 T-run1..N → ./aggregate-runs.sh T   (방어 r 분포)
+#   → 두 AGGREGATE 의 중앙값을 비교: N(control) → r(treatment)
+#
+# ★ 태그 v1/v2 를 arm 으로 쓰지 말 것 — 무방어 앱 코드는 맞지만 하네스가 구버전이라
+#   verify 출력 토큰이 달라 이 스크립트가 전부 '?' 로 읽는다(→ ⟨측정전⟩).
+# ★ main 은 V6__add_order_idempotency_key.sql 이 병합되기 전까지 treatment arm 이 될 수 없다.
+# ★ 아래 BRANCH 는 '집계를 실행한 시점의 HEAD' 일 뿐 런의 출처가 아니다 — 해당 arm 브랜치에서 돌릴 것.
+#
+# ADR-008 §재현 하네스 4: 전 run 원값·중앙값·범위 공표(점추정 금지). 한 번만(N=1) 돌려도 되지만 리포트에 명시.
+# =============================================================================
+set -uo pipefail
+export MSYS_NO_PATHCONV=1
+cd "$(dirname "$0")"
+
+PREFIX="${1:?라벨 접두 필요 (예: C 또는 T)}"
+mkdir -p results
+AGG="results/${PREFIX}-AGGREGATE.md"
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+
+# --- 파싱 (verify.txt = 판정 / k6-summary.json = 실행 파라미터) ---
+# ★ N 은 verify 의 출력 라인을 읽지 않고 성분에서 직접 계산한다.
+#   이유: 카오스잔여를 N 에 포함하도록 산식이 바뀌었는데, 그 이전에 측정된 산출물은 옛 N 라인을
+#   갖고 있다. 성분(①-⑤·v3a·a_T1)은 두 버전 모두 동일하게 기록되므로 여기서 계산하면
+#   구·신 산출물이 같은 산식으로 집계된다(재측정 불필요).
+#     N = ① + ② + ③ + ④ + ⑤ + 카오스잔여
+#     카오스잔여 = max(0, v3a − ③미보상) + a_T1   ← ③미보상 ⊆ v3a 라 빼야 이중 계상이 없다
+extract_v3a()  { grep -oE 'v3a PENDING/PAID 잔여 +: +[0-9]+' "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
+extract_aT1()  { grep -oE 'a_T1  CONFIRMED 인데 환불된 주문 +: +[0-9]+' "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
+extract_leak() { grep -oE '돈 보존 누수\(원\) = -?[0-9]+' "$1" 2>/dev/null | grep -oE '\-?[0-9]+$' | head -1; }
+# 장애별 위반(건): ①=.. ②=.. ... 줄에서 해당 장애의 건수 (기호는 verify 출력과 일치해야 한다)
+# ★ verify 의 num() 이 %8d 로 우측정렬 패딩하므로 '=' 와 숫자 사이에 공백이 들어간다 — 반드시 흡수할 것.
+extract_fault(){ grep -oE "$2=[[:space:]]*[0-9]+" "$1" 2>/dev/null | head -1 | grep -oE '[0-9]+$'; }
+extract_json() { grep -oE "\"$2\"[[:space:]]*:[[:space:]]*[0-9]+" "$1" 2>/dev/null | grep -oE '[0-9]+$' | head -1; }
+# verify 가 '돌아간 컨테이너의 거동'으로 판정한 arm (라벨이 아님) — control|treatment|? 를 반환
+extract_arm()  { grep -oE 'arm\(실측 거동\): (control|treatment)' "$1" 2>/dev/null | grep -oE '(control|treatment)$' | head -1; }
+
+median() { printf '%s\n' "$@" | sort -n | awk '{a[NR]=$0} END{if(NR==0){print "n/a"} else if(NR%2){print a[(NR+1)/2]} else {print (a[NR/2]+a[NR/2+1])/2}}'; }
+minv()   { printf '%s\n' "$@" | sort -n | head -1; }
+maxv()   { printf '%s\n' "$@" | sort -n | tail -1; }
+
+# --- run 파일 수집 (스모크 등 run 넘버가 없는 라벨은 제외) ---
+# ★ <LABEL>-FAILED 마커가 있는 런은 뺀다 — 기동 실패나 카오스 스케줄 미완주처럼
+#   '다른 실험이 돼버린' 런이다. 값 자체는 그럴듯하게 나오므로 마커 없이는 구분되지 않는다.
+files=""; excluded=()
+for f in $(ls -1 "results/${PREFIX}-run"*"-verify.txt" 2>/dev/null | sort -V); do
+    if [ -e "results/$(basename "$f" -verify.txt)-FAILED" ]; then
+        excluded+=("$(basename "$f" -verify.txt)"); continue
+    fi
+    files="$files $f"
+done
+if [ -z "${files// /}" ]; then
+    echo "[aggregate] results/${PREFIX}-run*-verify.txt 없음 — 먼저 수동 측정 절차로 run 을 쌓을 것" >&2
+    exit 1
+fi
+
+vals=(); leaks=(); f1s=(); f2s=(); f3s=(); f4s=(); f5s=(); crs=(); mismatched=()
+{
+    echo "# ADR-008 정합성 측정 집계 — arm=$PREFIX (집계 실행 시점 HEAD=$BRANCH)"
+    echo ""
+    echo "| run | ORDER_TARGET | ARRIVAL_RATE | 총 위반 건수(N/r) | ① | ② | ③ | ④ | ⑤ | 카오스잔여 | money_leak(원) |"
+    echo "|----:|-------------:|-------------:|------------------:|---:|---:|---:|---:|---:|-----------:|---------------:|"
+    for f in $files; do
+        label=$(basename "$f" -verify.txt)               # 예: T-run3
+        k6="results/${label}-k6-summary.json"
+        l=$(extract_leak "$f"); l=${l:-"?"}
+        a1=$(extract_fault "$f" "①"); a1=${a1:-"?"}
+        a2=$(extract_fault "$f" "②"); a2=${a2:-"?"}
+        a3=$(extract_fault "$f" "③"); a3=${a3:-"?"}
+        a4=$(extract_fault "$f" "④"); a4=${a4:-"?"}
+        a5=$(extract_fault "$f" "⑤"); a5=${a5:-"?"}
+        # N 을 성분에서 계산 — 구·신 산출물을 같은 산식으로 집계하기 위함(위 extract_N 주석 참조)
+        v3a=$(extract_v3a "$f"); v3a=${v3a:-""}
+        at1=$(extract_aT1 "$f"); at1=${at1:-0}
+        cr="?"; v="?"
+        if [ -n "$v3a" ] && [ "$a3" != "?" ]; then
+            cr=$(( (v3a > a3 ? v3a - a3 : 0) + at1 ))
+            if [ "$a1" != "?" ] && [ "$a2" != "?" ] && [ "$a4" != "?" ] && [ "$a5" != "?" ]; then
+                v=$(( a1 + a2 + a3 + a4 + a5 + cr ))
+            fi
+        fi
+        t="?"; r="?"
+        if [ -f "$k6" ]; then
+            t=$(extract_json "$k6" order_target); t=${t:-"?"}
+            r=$(extract_json "$k6" arrival_rate); r=${r:-"?"}
+        fi
+        # ★ arm 불일치 검출 — 라벨 접두(C/T)와 verify 가 실측한 거동이 다르면 이미지·소스 불일치다.
+        #   (arm 전환 시 이미지 재빌드가 실패했는데 이전 arm 이미지가 남아 있으면 조용히 잘못 측정된다)
+        arm=$(extract_arm "$f"); arm=${arm:-"?"}
+        expect=$([ "$PREFIX" = "C" ] && echo control || echo treatment)
+        if [ "$arm" != "?" ] && [ "$arm" != "$expect" ]; then
+            mismatched+=("$label(실측 $arm ≠ 라벨 $expect)")
+            echo "| ${label#"$PREFIX"-run} ⚠ | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $cr | $l |"
+            continue
+        fi
+        echo "| ${label#"$PREFIX"-run} | $t | $r | $v | $a1 | $a2 | $a3 | $a4 | $a5 | $cr | $l |"
+        [ "$v" != "?" ]  && vals+=("$v")
+        [ "$l" != "?" ]  && leaks+=("$l")
+        [ "$a1" != "?" ] && f1s+=("$a1")
+        [ "$a2" != "?" ] && f2s+=("$a2")
+        [ "$a3" != "?" ] && f3s+=("$a3")
+        [ "$a4" != "?" ] && f4s+=("$a4")
+        [ "$a5" != "?" ] && f5s+=("$a5")
+        [ "$cr" != "?" ] && crs+=("$cr")
+    done
+    echo ""
+    n=${#vals[@]}
+    if [ "$n" -gt 0 ]; then
+        echo "**총 위반 건수(N = ①+②+③+④+⑤ + 카오스잔여)**: median=$(median "${vals[@]}")  range=[$(minv "${vals[@]}")..$(maxv "${vals[@]}")]  (n=$n)"
+        if [ "${#f1s[@]}" -gt 0 ]; then
+            echo "**장애별 위반(median)**: ①=$(median "${f1s[@]}")  ②=$(median "${f2s[@]}")  ③=$(median "${f3s[@]}")  ④=$(median "${f4s[@]}")  ⑤=$(median "${f5s[@]}")"
+        fi
+        [ "${#crs[@]}" -gt 0 ] && \
+        echo "**카오스잔여(T1-T4, median)**: $(median "${crs[@]}")  range=[$(minv "${crs[@]}")..$(maxv "${crs[@]}")]"
+        [ "${#leaks[@]}" -gt 0 ] && \
+        echo "**돈 누수(원)**: median=$(median "${leaks[@]}")  range=[$(minv "${leaks[@]}")..$(maxv "${leaks[@]}")]"
+        if [ "$n" = "1" ]; then
+            echo ""
+            echo "> ⚠ **N=1 point estimate** — ADR-008 §재현 하네스 4 는 ≥10회 interleaved 권장."
+        fi
+    else
+        echo "> ⟨측정전⟩ — 파싱 가능한 결과 없음. (구버전 verify 산출물은 N 토큰이 달라 전부 ? 로 제외된다)"
+    fi
+    if [ "${#mismatched[@]}" -gt 0 ]; then
+        echo ""
+        echo "> ⚠ **arm 불일치 ${#mismatched[@]}건 — 집계에서 제외됨**: ${mismatched[*]}"
+        echo "> verify 가 실행된 컨테이너의 거동(processed_events 기록 여부)으로 판정한 arm 이 라벨과 다르다."
+        echo "> arm 전환 시 이미지 재빌드가 실패했는데 이전 arm 이미지가 남아 있으면 이 일이 생긴다."
+        echo "> 해당 런은 폐기하고 이미지를 재빌드한 뒤 다시 측정할 것."
+    fi
+    if [ "${#excluded[@]}" -gt 0 ]; then
+        echo ""
+        echo "> ⚠ **FAILED 마커 ${#excluded[@]}건 — 집계에서 제외됨**: ${excluded[*]}"
+        echo "> 기동 실패 또는 카오스 스케줄 미완주(주입 조합이 달라진 런). 같은 번호로 재측정할 것."
+    fi
+    echo ""
+    echo "> KPI 는 이 arm 의 중앙값을 반대편 arm(다른 브랜치) 과 비교:"
+    echo ">   총 위반 건수 N(control) → r(treatment) — 헤드라인. 장애별 ①-⑤ 도 각각 A → a 로 대비."
+    echo "> ★ N 은 재정의됐다(의도 장애①-⑤ + 카오스잔여 T1~T4). 기존 20런 리포트의 N(구산식, 단위 혼합)과 직접 비교 금지."
+} > "$AGG"
+
+echo "[aggregate] 완료 → $AGG"
+cat "$AGG"

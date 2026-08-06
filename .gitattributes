@@ -1,0 +1,21 @@
+# Windows 의 core.autocrlf=true 는 체크아웃 시 워킹트리를 CRLF 로 바꾼다.
+# Docker build 는 그 워킹트리를 그대로 build context 로 COPY 하므로, 컨테이너(Linux)
+# 안에서 shebang 이 "#!/bin/sh\r" 로 읽혀 `./gradlew: not found` (exit 127) 로 죽는다.
+# → 리눅스에서 실행/해석되는 파일은 플랫폼과 무관하게 항상 LF 로 체크아웃한다.
+
+gradlew        text eol=lf
+*.sh           text eol=lf
+Dockerfile     text eol=lf
+*/Dockerfile   text eol=lf
+.dockerignore  text eol=lf
+
+# Windows 전용 스크립트는 CRLF 유지
+gradlew.bat    text eol=crlf
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+
+# 바이너리 — 줄바꿈 변환 금지
+*.jar          binary
+*.png          binary
+*.jpg          binary
+*.ico          binary
